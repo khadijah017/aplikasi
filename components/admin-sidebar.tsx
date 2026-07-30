@@ -20,6 +20,7 @@ import {
   CreditCard,
   ClipboardList,
   ClipboardCheck,
+  CheckCircle,
   Database,
   Calendar,
 } from "lucide-react";
@@ -73,6 +74,24 @@ export function AdminSidebar() {
       href: "/survey?tab=dashboard",
     },
     {
+      id: "survey-schedule",
+      label: "Jadwal Survei",
+      icon: Calendar,
+      href: "/survey/jadwal-survei",
+    },
+    {
+      id: "survey-execution",
+      label: "Pelaksanaan Survei",
+      icon: ClipboardList,
+      href: "/survey/pelaksanaan-survei",
+    },
+    {
+      id: "survey-verification",
+      label: "Hasil Survei",
+      icon: CheckCircle,
+      href: "/survey/verifikasi-hasil-survei",
+    },
+    {
       id: "master-data",
       label: "Master Data",
       icon: Database,
@@ -116,11 +135,21 @@ export function AdminSidebar() {
         return user?.role === "admin";
       }
       if (user?.role === "admin") {
-        return !["dashboard", "peta", "survey-monitoring", "signature", "sla"].includes(item.id);
+        return ![
+          "dashboard",
+          "peta",
+          "survey-monitoring",
+          "survey-schedule",
+          "survey-execution",
+          "signature",
+          "sla",
+        ].includes(item.id);
       }
       if (user?.role === "tim_survei") {
         return (
           item.id === "survey-monitoring" ||
+          item.id === "survey-schedule" ||
+          item.id === "survey-execution" ||
           item.id === "report" ||
           item.id === "peta"
         );
@@ -151,6 +180,15 @@ export function AdminSidebar() {
     if (petaIndex >= 0 && petaIndex !== menuItems.length - 1) {
       const [petaItem] = menuItems.splice(petaIndex, 1);
       menuItems.push(petaItem);
+    }
+  }
+
+  if (user?.role === "admin") {
+    const surveyIndex = menuItems.findIndex((item) => item.id === "survey-verification");
+    if (surveyIndex >= 0) {
+      const [surveyItem] = menuItems.splice(surveyIndex, 1);
+      const targetIndex = Math.min(5, menuItems.length);
+      menuItems.splice(targetIndex, 0, surveyItem);
     }
   }
 
