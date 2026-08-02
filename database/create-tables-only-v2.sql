@@ -143,7 +143,10 @@ CREATE TABLE IF NOT EXISTS payments (
   id VARCHAR(36) PRIMARY KEY,
   license_id VARCHAR(36) NULL,
   tracking_code VARCHAR(50) NULL,
+<<<<<<< HEAD
   jenis_id VARCHAR(36) NULL,
+=======
+>>>>>>> 4c4f0770793d167becd0ecb8e522c555a3d88c43
   pemohon_nama VARCHAR(255) NOT NULL,
   jumlah DECIMAL(15,2) NOT NULL DEFAULT 0,
   metode_pembayaran ENUM('transfer', 'tunai', 'va', 'qris') DEFAULT 'transfer',
