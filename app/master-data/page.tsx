@@ -174,14 +174,7 @@ function MasterDataContent() {
   ]);
   // load jenis pelayanan from storage if present
   useEffect(() => {
-<<<<<<< HEAD
-    const stored = loadFromStorage(
-      STORAGE_KEYS.jenisPelayanan,
-      [],
-    ) as JenisPelayanan[];
-=======
     const stored = loadFromStorage(STORAGE_KEYS.jenisPelayanan, []) as JenisPelayanan[];
->>>>>>> 4c4f0770793d167becd0ecb8e522c555a3d88c43
     if (stored && stored.length > 0) {
       setJenisPelayananList(stored);
     } else {
@@ -189,15 +182,11 @@ function MasterDataContent() {
       saveToStorage(STORAGE_KEYS.jenisPelayanan, jenisPelayananList);
     }
   }, []);
-<<<<<<< HEAD
 
   // persist jenisPelayananList whenever it changes
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.jenisPelayanan, jenisPelayananList);
   }, [jenisPelayananList]);
-
-=======
->>>>>>> 4c4f0770793d167becd0ecb8e522c555a3d88c43
   const [isJenisDialogOpen, setIsJenisDialogOpen] = useState(false);
   const [editingJenis, setEditingJenis] = useState<JenisPelayanan | null>(null);
   const [jenisForm, setJenisForm] = useState({

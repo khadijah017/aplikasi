@@ -161,10 +161,7 @@ export function AdminSidebar() {
           "signature",
           "sla",
           "survey-monitoring",
-<<<<<<< HEAD
           "report",
-=======
->>>>>>> 4c4f0770793d167becd0ecb8e522c555a3d88c43
         ].includes(item.id);
       }
       return true;
@@ -188,13 +185,9 @@ export function AdminSidebar() {
   }
 
   if (user?.role === "admin") {
-<<<<<<< HEAD
     const surveyIndex = menuItems.findIndex(
       (item) => item.id === "survey-verification",
     );
-=======
-    const surveyIndex = menuItems.findIndex((item) => item.id === "survey-verification");
->>>>>>> 4c4f0770793d167becd0ecb8e522c555a3d88c43
     if (surveyIndex >= 0) {
       const [surveyItem] = menuItems.splice(surveyIndex, 1);
       const targetIndex = Math.min(5, menuItems.length);

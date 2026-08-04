@@ -30,10 +30,10 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { ExportDialog } from "./export-dialog";
-import { 
-  exportToPDF, 
+import {
+  exportToPDF,
   exportPeriodeWaktuToPDF,
-  exportKeterlambatanRisikoToPDF
+  exportKeterlambatanRisikoToPDF,
 } from "../lib/export-utils";
 import {
   exportSLAPerformanceHtml,
@@ -76,27 +76,60 @@ export default function ReportDashboard() {
   const [isExportingSurveyPDF, setIsExportingSurveyPDF] = useState(false);
   const [isExportingPeriodePDF, setIsExportingPeriodePDF] = useState(false);
   const [isExportingRisikoPDF, setIsExportingRisikoPDF] = useState(false);
-  const [isExportingIzinExpiredPDF, setIsExportingIzinExpiredPDF] = useState(false);
-  const [isExportingDaftarPemohonPDF, setIsExportingDaftarPemohonPDF] = useState(false);
+  const [isExportingIzinExpiredPDF, setIsExportingIzinExpiredPDF] =
+    useState(false);
+  const [isExportingDaftarPemohonPDF, setIsExportingDaftarPemohonPDF] =
+    useState(false);
   const [isExportingDitolakPDF, setIsExportingDitolakPDF] = useState(false);
   const [isExportingPengaduanPDF, setIsExportingPengaduanPDF] = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const overdueLicenses = getOverdueLicenses();
   const [surveyReports, setSurveyReports] = useState<SurveyReportData[]>([]);
+  const isAdmin = user?.role === "admin";
+  const periodeTabLabel = isAdmin ? "Laporan Hasil Survei" : "Periode Waktu";
+
+  const generatedSurveyReports = useMemo(() => {
+    return licenses
+      .filter(
+        (license) =>
+          ["proses", "rekomendasi", "dikirim", "terlambat"].includes(
+            license.status,
+          ) &&
+          license.lokasiIzin,
+      )
+      .map((license) => ({
+        id: license.id,
+        licenseId: license.id,
+        trackingCode: license.trackingCode || "-",
+        namaIzin: license.namaIzin,
+        jenisIzin: license.jenisIzin,
+        pemohonNama: license.pemohonNama || "-",
+        lokasi: license.lokasiIzin,
+        tanggalSurvey: license.permohonanMasuk || "",
+        waktuSurvey: "",
+        status: license.status,
+        surveyResult: "-",
+      })) as SurveyReportData[];
+  }, [licenses]);
+
+  const displayedSurveyReports =
+    surveyReports.length > 0 ? surveyReports : generatedSurveyReports;
 
   useEffect(() => {
-    if (user?.role !== "tim_survei") return;
     try {
-      const stored = localStorage.getItem("surveyData");
+      const stored =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("surveyData")
+          : null;
       if (stored) {
         const parsed = JSON.parse(stored) as SurveyReportData[];
-        setSurveyReports(parsed);
+        setSurveyReports(Array.isArray(parsed) ? parsed : []);
       }
     } catch {
       setSurveyReports([]);
     }
-  }, [user]);
+  }, []);
 
   // Load complaints from API
   useEffect(() => {
@@ -135,7 +168,7 @@ export default function ReportDashboard() {
     if (selectedPeriod !== "all") {
       const now = new Date();
       const filterDate = new Date();
-      
+
       switch (selectedPeriod) {
         case "week":
           filterDate.setDate(now.getDate() - 7);
@@ -150,12 +183,12 @@ export default function ReportDashboard() {
           filterDate.setFullYear(now.getFullYear() - 1);
           break;
       }
-      
-      filtered = filtered.filter(license => {
+
+      filtered = filtered.filter((license) => {
         // Gunakan permohonanMasuk sebagai tanggal referensi, fallback ke createdAt jika tidak ada
         const licenseDateStr = license.permohonanMasuk || license.createdAt;
         if (!licenseDateStr) return false;
-        
+
         const licenseDate = new Date(licenseDateStr);
         return licenseDate >= filterDate;
       });
@@ -163,7 +196,9 @@ export default function ReportDashboard() {
 
     // Filter berdasarkan sektor
     if (selectedSector !== "all") {
-      filtered = filtered.filter(license => license.sektor === selectedSector);
+      filtered = filtered.filter(
+        (license) => license.sektor === selectedSector,
+      );
     }
 
     return filtered;
@@ -172,19 +207,25 @@ export default function ReportDashboard() {
   // Statistik laporan
   const reportStats = useMemo(() => {
     const total = filteredLicenses.length;
-    const draft = filteredLicenses.filter(l => l.status === "draft").length;
-    const proses = filteredLicenses.filter(l => l.status === "proses").length;
-    const rekomendasi = filteredLicenses.filter(l => l.status === "rekomendasi").length;
-    const selesai = filteredLicenses.filter(l => l.status === "selesai").length;
-    const terlambat = filteredLicenses.filter(l => 
-      overdueLicenses.some(ol => ol.id === l.id)
+    const draft = filteredLicenses.filter((l) => l.status === "draft").length;
+    const proses = filteredLicenses.filter((l) => l.status === "proses").length;
+    const rekomendasi = filteredLicenses.filter(
+      (l) => l.status === "rekomendasi",
+    ).length;
+    const selesai = filteredLicenses.filter(
+      (l) => l.status === "selesai",
+    ).length;
+    const terlambat = filteredLicenses.filter((l) =>
+      overdueLicenses.some((ol) => ol.id === l.id),
     ).length;
 
     // Hitung rata-rata SLA
-    const licensesWithSLA = filteredLicenses.filter(l => l.totalSLA > 0);
-    const avgSLA = licensesWithSLA.length > 0 
-      ? licensesWithSLA.reduce((sum, l) => sum + l.totalSLA, 0) / licensesWithSLA.length 
-      : 0;
+    const licensesWithSLA = filteredLicenses.filter((l) => l.totalSLA > 0);
+    const avgSLA =
+      licensesWithSLA.length > 0
+        ? licensesWithSLA.reduce((sum, l) => sum + l.totalSLA, 0) /
+          licensesWithSLA.length
+        : 0;
 
     return {
       total,
@@ -200,11 +241,11 @@ export default function ReportDashboard() {
   // Data untuk chart sektor
   const sectorData = useMemo(() => {
     const sectorCount: Record<string, number> = {};
-    filteredLicenses.forEach(license => {
+    filteredLicenses.forEach((license) => {
       const sector = license.sektor || "Tidak Diketahui";
       sectorCount[sector] = (sectorCount[sector] || 0) + 1;
     });
-    
+
     return Object.entries(sectorCount)
       .map(([sector, count]) => ({ sector, count }))
       .sort((a, b) => b.count - a.count);
@@ -226,26 +267,36 @@ export default function ReportDashboard() {
     today.setHours(0, 0, 0, 0);
 
     return filteredLicenses
-      .filter(l => l.berlakuSampai)
-      .map(license => {
+      .filter((l) => l.berlakuSampai)
+      .map((license) => {
         const validUntil = new Date(license.berlakuSampai!);
         validUntil.setHours(0, 0, 0, 0);
-        const diffDays = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.ceil(
+          (validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+        );
         return { ...license, diffDays, isExpired: diffDays < 0 };
       })
       .sort((a, b) => a.diffDays - b.diffDays);
   }, [filteredLicenses]);
 
-  const expiredCount = expiredLicenseData.filter(l => l.isExpired).length;
-  const expiringSoonCount = expiredLicenseData.filter(l => !l.isExpired).length;
-  const validCount = filteredLicenses.filter(l => l.status === "selesai" && l.berlakuSampai && !expiredLicenseData.some(el => el.id === l.id)).length;
+  const expiredCount = expiredLicenseData.filter((l) => l.isExpired).length;
+  const expiringSoonCount = expiredLicenseData.filter(
+    (l) => !l.isExpired,
+  ).length;
+  const validCount = filteredLicenses.filter(
+    (l) =>
+      l.status === "selesai" &&
+      l.berlakuSampai &&
+      !expiredLicenseData.some((el) => el.id === l.id),
+  ).length;
 
   // Fungsi untuk download PDF tabel SLA Performance
   const handleDownloadSLAPDF = async () => {
     if (filteredLicenses.length === 0) {
       toast({
         title: "Tidak ada data",
-        description: "Tidak ada data yang dapat diekspor dengan filter yang dipilih.",
+        description:
+          "Tidak ada data yang dapat diekspor dengan filter yang dipilih.",
         variant: "destructive",
       });
       return;
@@ -256,7 +307,7 @@ export default function ReportDashboard() {
     try {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-performa-sla-${timestamp}`;
-      
+
       await exportSLAPerformanceHtml(filteredLicenses, filename);
 
       toast({
@@ -265,8 +316,11 @@ export default function ReportDashboard() {
       });
     } catch (error) {
       console.error("Export SLA PDF error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat mengekspor PDF.";
-      
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat mengekspor PDF.";
+
       toast({
         title: "Ekspor gagal",
         description: errorMessage,
@@ -282,7 +336,8 @@ export default function ReportDashboard() {
     if (filteredLicenses.length === 0) {
       toast({
         title: "Tidak ada data",
-        description: "Tidak ada data yang dapat diekspor dengan filter yang dipilih.",
+        description:
+          "Tidak ada data yang dapat diekspor dengan filter yang dipilih.",
         variant: "destructive",
       });
       return;
@@ -293,8 +348,12 @@ export default function ReportDashboard() {
     try {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-status-perizinan-${timestamp}`;
-      
-      await exportStatusPerizinanHtml(filteredLicenses, overdueLicenses, filename);
+
+      await exportStatusPerizinanHtml(
+        filteredLicenses,
+        overdueLicenses,
+        filename,
+      );
 
       toast({
         title: "Berhasil",
@@ -302,8 +361,11 @@ export default function ReportDashboard() {
       });
     } catch (error) {
       console.error("Export Status PDF error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat mengekspor PDF.";
-      
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat mengekspor PDF.";
+
       toast({
         title: "Ekspor gagal",
         description: errorMessage,
@@ -319,7 +381,8 @@ export default function ReportDashboard() {
     if (sectorData.length === 0) {
       toast({
         title: "Tidak ada data",
-        description: "Tidak ada data yang dapat diekspor dengan filter yang dipilih.",
+        description:
+          "Tidak ada data yang dapat diekspor dengan filter yang dipilih.",
         variant: "destructive",
       });
       return;
@@ -330,8 +393,13 @@ export default function ReportDashboard() {
     try {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-analisis-sektor-${timestamp}`;
-      
-      await exportAnalisisSektorHtml(filteredLicenses, sectorData, overdueLicenses, filename);
+
+      await exportAnalisisSektorHtml(
+        filteredLicenses,
+        sectorData,
+        overdueLicenses,
+        filename,
+      );
 
       toast({
         title: "Berhasil",
@@ -339,8 +407,11 @@ export default function ReportDashboard() {
       });
     } catch (error) {
       console.error("Export Sektor PDF error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat mengekspor PDF.";
-      
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat mengekspor PDF.";
+
       toast({
         title: "Ekspor gagal",
         description: errorMessage,
@@ -355,42 +426,51 @@ export default function ReportDashboard() {
   const handleDownloadPeriodePDF = async () => {
     // Generate period data (same logic as in component)
     const generatePeriodData = () => {
-      const periods: Array<{ period: string; date: Date; licenses: typeof licenses }> = [];
+      const periods: Array<{
+        period: string;
+        date: Date;
+        licenses: typeof licenses;
+      }> = [];
       const now = new Date();
-      
+
       if (selectedPeriod === "all") {
         for (let i = 11; i >= 0; i--) {
           const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-          const monthName = date.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+          const monthName = date.toLocaleDateString("id-ID", {
+            month: "long",
+            year: "numeric",
+          });
           periods.push({
             period: monthName,
             date: date,
-            licenses: licenses.filter(l => {
+            licenses: licenses.filter((l) => {
               // Gunakan permohonanMasuk sebagai tanggal referensi, fallback ke createdAt jika tidak ada
               const licenseDateStr = l.permohonanMasuk || l.createdAt;
               if (!licenseDateStr) return false;
-              
+
               const licenseDate = new Date(licenseDateStr);
-              return licenseDate.getMonth() === date.getMonth() && 
-                     licenseDate.getFullYear() === date.getFullYear();
-            })
+              return (
+                licenseDate.getMonth() === date.getMonth() &&
+                licenseDate.getFullYear() === date.getFullYear()
+              );
+            }),
           });
         }
       } else {
         const periodNames: Record<string, string> = {
-          "week": "1 Minggu Terakhir",
-          "month": "1 Bulan Terakhir", 
-          "quarter": "3 Bulan Terakhir",
-          "year": "1 Tahun Terakhir"
+          week: "1 Minggu Terakhir",
+          month: "1 Bulan Terakhir",
+          quarter: "3 Bulan Terakhir",
+          year: "1 Tahun Terakhir",
         };
-        
+
         periods.push({
           period: periodNames[selectedPeriod] || selectedPeriod,
           date: now,
-          licenses: filteredLicenses
+          licenses: filteredLicenses,
         });
       }
-      
+
       return periods;
     };
 
@@ -399,7 +479,8 @@ export default function ReportDashboard() {
     if (periodData.length === 0) {
       toast({
         title: "Tidak ada data",
-        description: "Tidak ada data yang dapat diekspor dengan filter yang dipilih.",
+        description:
+          "Tidak ada data yang dapat diekspor dengan filter yang dipilih.",
         variant: "destructive",
       });
       return;
@@ -410,9 +491,13 @@ export default function ReportDashboard() {
     try {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-periode-waktu-${timestamp}`;
-      
-      const { blob, filename: pdfFilename } = await exportPeriodeWaktuToPDF(periodData, overdueLicenses, filename);
-      
+
+      const { blob, filename: pdfFilename } = await exportPeriodeWaktuToPDF(
+        periodData,
+        overdueLicenses,
+        filename,
+      );
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -428,8 +513,11 @@ export default function ReportDashboard() {
       });
     } catch (error) {
       console.error("Export Periode PDF error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat mengekspor PDF.";
-      
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat mengekspor PDF.";
+
       toast({
         title: "Ekspor gagal",
         description: errorMessage,
@@ -456,9 +544,12 @@ export default function ReportDashboard() {
     try {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-keseluruhan-permohonan-perizinan-${timestamp}`;
-      
-      const { blob, filename: pdfFilename } = await exportToPDF(filteredLicenses, filename);
-      
+
+      const { blob, filename: pdfFilename } = await exportToPDF(
+        filteredLicenses,
+        filename,
+      );
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -474,8 +565,11 @@ export default function ReportDashboard() {
       });
     } catch (error) {
       console.error("Export PDF error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat mengekspor PDF.";
-      
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat mengekspor PDF.";
+
       toast({
         title: "Ekspor gagal",
         description: errorMessage,
@@ -492,7 +586,10 @@ export default function ReportDashboard() {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-izin-expired-${timestamp}`;
       await exportIzinExpiredHtml(filteredLicenses, filename);
-      toast({ title: "Berhasil", description: "PDF laporan izin expired berhasil diunduh." });
+      toast({
+        title: "Berhasil",
+        description: "PDF laporan izin expired berhasil diunduh.",
+      });
     } catch (error) {
       toast({ title: "Ekspor gagal", variant: "destructive" });
     } finally {
@@ -515,11 +612,21 @@ export default function ReportDashboard() {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-data-survei-${timestamp}`;
       await exportSurveyReportHtml(surveyReports, filename);
-      toast({ title: "Berhasil", description: "PDF laporan data survei berhasil diunduh." });
+      toast({
+        title: "Berhasil",
+        description: "PDF laporan data survei berhasil diunduh.",
+      });
     } catch (error) {
       console.error("Export survey report PDF error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat mengekspor PDF.";
-      toast({ title: "Ekspor gagal", description: errorMessage, variant: "destructive" });
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat mengekspor PDF.";
+      toast({
+        title: "Ekspor gagal",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsExportingSurveyPDF(false);
     }
@@ -531,7 +638,10 @@ export default function ReportDashboard() {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-daftar-pemohon-${timestamp}`;
       await exportDaftarPemohonHtml(filteredLicenses, filename);
-      toast({ title: "Berhasil", description: "PDF laporan daftar pemohon berhasil diunduh." });
+      toast({
+        title: "Berhasil",
+        description: "PDF laporan daftar pemohon berhasil diunduh.",
+      });
     } catch (error) {
       toast({ title: "Ekspor gagal", variant: "destructive" });
     } finally {
@@ -541,7 +651,11 @@ export default function ReportDashboard() {
 
   const handleDownloadDitolakPDF = async () => {
     if (complaints.length === 0) {
-      toast({ title: "Tidak ada data", description: "Tidak ada data pengaduan yang dapat diekspor.", variant: "destructive" });
+      toast({
+        title: "Tidak ada data",
+        description: "Tidak ada data pengaduan yang dapat diekspor.",
+        variant: "destructive",
+      });
       return;
     }
     setIsExportingPengaduanPDF(true);
@@ -549,7 +663,10 @@ export default function ReportDashboard() {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-pengaduan-${timestamp}`;
       await exportLaporanPengaduanHtml(complaints, filename);
-      toast({ title: "Berhasil", description: "PDF laporan pengaduan berhasil diunduh." });
+      toast({
+        title: "Berhasil",
+        description: "PDF laporan pengaduan berhasil diunduh.",
+      });
     } catch (error) {
       toast({ title: "Ekspor gagal", variant: "destructive" });
     } finally {
@@ -562,7 +679,8 @@ export default function ReportDashboard() {
     if (filteredLicenses.length === 0) {
       toast({
         title: "Tidak ada data",
-        description: "Tidak ada data yang dapat dicetak dengan filter yang dipilih.",
+        description:
+          "Tidak ada data yang dapat dicetak dengan filter yang dipilih.",
         variant: "destructive",
       });
       return;
@@ -573,12 +691,12 @@ export default function ReportDashboard() {
     try {
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `laporan-perizinan-${timestamp}`;
-      
+
       const { blob } = await exportToPDF(filteredLicenses, filename);
-      
+
       // Buat URL untuk PDF
       const pdfUrl = URL.createObjectURL(blob);
-      
+
       // Buat iframe untuk print PDF
       const iframe = document.createElement("iframe");
       iframe.style.position = "fixed";
@@ -588,14 +706,14 @@ export default function ReportDashboard() {
       iframe.style.height = "0";
       iframe.style.border = "none";
       iframe.src = pdfUrl;
-      
+
       document.body.appendChild(iframe);
-      
+
       iframe.onload = () => {
         setTimeout(() => {
           try {
             iframe.contentWindow?.print();
-            
+
             // Cleanup setelah beberapa detik
             setTimeout(() => {
               document.body.removeChild(iframe);
@@ -616,8 +734,11 @@ export default function ReportDashboard() {
       });
     } catch (error) {
       console.error("Print PDF error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat mencetak PDF.";
-      
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat mencetak PDF.";
+
       toast({
         title: "Cetak gagal",
         description: errorMessage,
@@ -656,20 +777,33 @@ export default function ReportDashboard() {
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <th className="text-left py-3 px-2 font-semibold">No</th>
-                    <th className="text-left py-3 px-2 font-semibold">Kode Tracking</th>
-                    <th className="text-left py-3 px-2 font-semibold">Nama Izin</th>
-                    <th className="text-left py-3 px-2 font-semibold">Pemohon</th>
-                    <th className="text-left py-3 px-2 font-semibold">Lokasi</th>
-                    <th className="text-left py-3 px-2 font-semibold">Jadwal Survei</th>
-                    <th className="text-left py-3 px-2 font-semibold">Hasil Survei</th>
-                    <th className="text-left py-3 px-2 font-semibold">Tindakan</th>
-                    <th className="text-left py-3 px-2 font-semibold">Status</th>
+                    <th className="text-left py-3 px-2 font-semibold">
+                      Kode Tracing
+                    </th>
+                    <th className="text-left py-3 px-2 font-semibold">
+                      Nama Izin
+                    </th>
+                    <th className="text-left py-3 px-2 font-semibold">
+                      Nama Pemohon
+                    </th>
+                    <th className="text-left py-3 px-2 font-semibold">
+                      Lokasi
+                    </th>
+                    <th className="text-left py-3 px-2 font-semibold">
+                      Jadwal Survei
+                    </th>
+                    <th className="text-left py-3 px-2 font-semibold">
+                      Hasil Survei
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {surveyReports.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-10 text-slate-500">
+                      <td
+                        colSpan={7}
+                        className="text-center py-10 text-slate-500"
+                      >
                         Tidak ada data survei tersedia.
                       </td>
                     </tr>
@@ -681,28 +815,30 @@ export default function ReportDashboard() {
                           {survey.trackingCode || "-"}
                         </td>
                         <td className="py-3 px-2">
-                          <div className="font-medium text-slate-900">{survey.namaIzin}</div>
+                          <div className="font-medium text-slate-900">
+                            {survey.namaIzin}
+                          </div>
                         </td>
-                        <td className="py-3 px-2">{survey.pemohonNama || "-"}</td>
+                        <td className="py-3 px-2">
+                          {survey.pemohonNama || "-"}
+                        </td>
                         <td className="py-3 px-2 max-w-[180px] truncate text-slate-600">
                           {survey.lokasi || "-"}
                         </td>
                         <td className="py-3 px-2">
-                          {survey.tanggalSurvey ? new Date(survey.tanggalSurvey).toLocaleDateString("id-ID") : "-"}
+                          {survey.tanggalSurvey
+                            ? new Date(survey.tanggalSurvey).toLocaleDateString(
+                                "id-ID",
+                              )
+                            : "-"}
                           {survey.waktuSurvey && (
-                            <div className="text-xs text-slate-500">{survey.waktuSurvey}</div>
+                            <div className="text-xs text-slate-500">
+                              {survey.waktuSurvey}
+                            </div>
                           )}
                         </td>
                         <td className="py-3 px-2 text-slate-700">
                           {survey.surveyResult || "-"}
-                        </td>
-                        <td className="py-3 px-2 text-slate-700">
-                          {survey.surveyAction || "-"}
-                        </td>
-                        <td className="py-3 px-2">
-                          <Badge className="bg-slate-100 text-slate-800">
-                            {survey.status.replace("_", " ")}
-                          </Badge>
                         </td>
                       </tr>
                     ))
@@ -782,38 +918,66 @@ export default function ReportDashboard() {
       </Card>
 
       {/* Report Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-6"
+      >
         <div className="flex justify-center">
           <TabsList className="flex flex-wrap w-full max-w-[1200px] h-auto gap-2 p-2">
-            <TabsTrigger value="sla-performance" className="flex items-center gap-2">
+            <TabsTrigger
+              value="sla-performance"
+              className="flex items-center gap-2"
+            >
               <TrendingUp className="h-4 w-4" />
               Performa SLA
             </TabsTrigger>
-            <TabsTrigger value="status-perizinan" className="flex items-center gap-2">
+            <TabsTrigger
+              value="status-perizinan"
+              className="flex items-center gap-2"
+            >
               <FileText className="h-4 w-4" />
               Status Perizinan
             </TabsTrigger>
-            <TabsTrigger value="analisis-sektor" className="flex items-center gap-2">
+            <TabsTrigger
+              value="analisis-sektor"
+              className="flex items-center gap-2"
+            >
               <BarChart3 className="h-4 w-4" />
               Analisis Sektor
             </TabsTrigger>
-            <TabsTrigger value="periode-waktu" className="flex items-center gap-2">
+            <TabsTrigger
+              value="periode-waktu"
+              className="flex items-center gap-2"
+            >
               <Calendar className="h-4 w-4" />
-              Periode Waktu
+              {periodeTabLabel}
             </TabsTrigger>
-            <TabsTrigger value="keterlambatan-risiko" className="flex items-center gap-2">
+            <TabsTrigger
+              value="keterlambatan-risiko"
+              className="flex items-center gap-2"
+            >
               <FileText className="h-4 w-4" />
               Permohonan
             </TabsTrigger>
-            <TabsTrigger value="izin-expired" className="flex items-center gap-2">
+            <TabsTrigger
+              value="izin-expired"
+              className="flex items-center gap-2"
+            >
               <Clock className="h-4 w-4" />
               Izin Expired
             </TabsTrigger>
-            <TabsTrigger value="daftar-pemohon" className="flex items-center gap-2">
+            <TabsTrigger
+              value="daftar-pemohon"
+              className="flex items-center gap-2"
+            >
               <FileText className="h-4 w-4" />
               Daftar Pemohon
             </TabsTrigger>
-            <TabsTrigger value="laporan-pengaduan" className="flex items-center gap-2">
+            <TabsTrigger
+              value="laporan-pengaduan"
+              className="flex items-center gap-2"
+            >
               <MessageSquare className="h-4 w-4" />
               Laporan Pengaduan
             </TabsTrigger>
@@ -828,12 +992,22 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-emerald-700">Tepat Waktu</p>
+                    <p className="text-sm font-medium text-emerald-700">
+                      Tepat Waktu
+                    </p>
                     <p className="text-2xl font-bold text-emerald-900">
-                      {filteredLicenses.filter(l => l.totalSLA <= 14).length}
+                      {filteredLicenses.filter((l) => l.totalSLA <= 14).length}
                     </p>
                     <p className="text-xs text-emerald-600">
-                      {filteredLicenses.length > 0 ? Math.round((filteredLicenses.filter(l => l.totalSLA <= 14).length / filteredLicenses.length) * 100) : 0}% dari total
+                      {filteredLicenses.length > 0
+                        ? Math.round(
+                            (filteredLicenses.filter((l) => l.totalSLA <= 14)
+                              .length /
+                              filteredLicenses.length) *
+                              100,
+                          )
+                        : 0}
+                      % dari total
                     </p>
                   </div>
                   <CheckCircle className="h-8 w-8 text-emerald-600" />
@@ -845,12 +1019,22 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-red-700">Terlambat</p>
+                    <p className="text-sm font-medium text-red-700">
+                      Terlambat
+                    </p>
                     <p className="text-2xl font-bold text-red-900">
-                      {filteredLicenses.filter(l => l.totalSLA > 14).length}
+                      {filteredLicenses.filter((l) => l.totalSLA > 14).length}
                     </p>
                     <p className="text-xs text-red-600">
-                      {filteredLicenses.length > 0 ? Math.round((filteredLicenses.filter(l => l.totalSLA > 14).length / filteredLicenses.length) * 100) : 0}% dari total
+                      {filteredLicenses.length > 0
+                        ? Math.round(
+                            (filteredLicenses.filter((l) => l.totalSLA > 14)
+                              .length /
+                              filteredLicenses.length) *
+                              100,
+                          )
+                        : 0}
+                      % dari total
                     </p>
                   </div>
                   <AlertTriangle className="h-8 w-8 text-red-600" />
@@ -862,7 +1046,9 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-blue-700">Rata-rata SLA</p>
+                    <p className="text-sm font-medium text-blue-700">
+                      Rata-rata SLA
+                    </p>
                     <p className="text-2xl font-bold text-blue-900">
                       {reportStats.avgSLA}
                     </p>
@@ -877,7 +1063,9 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-purple-700">Target SLA</p>
+                    <p className="text-sm font-medium text-purple-700">
+                      Target SLA
+                    </p>
                     <p className="text-2xl font-bold text-purple-900">14</p>
                     <p className="text-xs text-purple-600">hari maksimal</p>
                   </div>
@@ -918,38 +1106,71 @@ export default function ReportDashboard() {
                   <thead>
                     <tr className="border-b bg-gray-50">
                       <th className="text-left py-3 px-2 font-semibold">No</th>
-                      <th className="text-left py-3 px-2 font-semibold">Nama Izin</th>
-                      <th className="text-left py-3 px-2 font-semibold">Tanggal Masuk</th>
-                      <th className="text-left py-3 px-2 font-semibold">Tanggal Selesai</th>
-                      <th className="text-left py-3 px-2 font-semibold">Durasi Aktual</th>
-                      <th className="text-left py-3 px-2 font-semibold">Target SLA</th>
-                      <th className="text-left py-3 px-2 font-semibold">Status SLA</th>
-                      <th className="text-left py-3 px-2 font-semibold">Selisih Hari</th>
-                      <th className="text-left py-3 px-2 font-semibold">Penyebab Keterlambatan</th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Nama Izin
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Tanggal Masuk
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Tanggal Selesai
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Durasi Aktual
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Target SLA
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Status SLA
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Selisih Hari
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Penyebab Keterlambatan
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredLicenses.map((license, index) => {
                       const isOverdue = license.totalSLA > 14;
                       const selisihHari = license.totalSLA - 14;
-                      const tanggalMasuk = license.permohonanMasuk ? new Date(license.permohonanMasuk) : null;
-                      const tanggalSelesai = license.tglPenyerahanIzin ? new Date(license.tglPenyerahanIzin) : null;
-                      
+                      const tanggalMasuk = license.permohonanMasuk
+                        ? new Date(license.permohonanMasuk)
+                        : null;
+                      const tanggalSelesai = license.tglPenyerahanIzin
+                        ? new Date(license.tglPenyerahanIzin)
+                        : null;
+
                       return (
-                        <tr key={license.id} className={`border-b hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
+                        <tr
+                          key={license.id}
+                          className={`border-b hover:bg-gray-50 ${isOverdue ? "bg-red-50" : ""}`}
+                        >
                           <td className="py-3 px-2 font-medium">{index + 1}</td>
                           <td className="py-3 px-2">
-                            <div className="font-medium text-gray-900">{license.namaIzin}</div>
-                            <div className="text-xs text-gray-500">{license.jenisIzin}</div>
+                            <div className="font-medium text-gray-900">
+                              {license.namaIzin}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {license.jenisIzin}
+                            </div>
                           </td>
                           <td className="py-3 px-2">
-                            {tanggalMasuk ? tanggalMasuk.toLocaleDateString("id-ID") : "-"}
+                            {tanggalMasuk
+                              ? tanggalMasuk.toLocaleDateString("id-ID")
+                              : "-"}
                           </td>
                           <td className="py-3 px-2">
-                            {tanggalSelesai ? tanggalSelesai.toLocaleDateString("id-ID") : "-"}
+                            {tanggalSelesai
+                              ? tanggalSelesai.toLocaleDateString("id-ID")
+                              : "-"}
                           </td>
                           <td className="py-3 px-2">
-                            <span className={`font-medium ${isOverdue ? 'text-red-600' : 'text-gray-700'}`}>
+                            <span
+                              className={`font-medium ${isOverdue ? "text-red-600" : "text-gray-700"}`}
+                            >
                               {license.totalSLA || 0} hari
                             </span>
                           </td>
@@ -970,8 +1191,12 @@ export default function ReportDashboard() {
                             )}
                           </td>
                           <td className="py-3 px-2">
-                            <span className={`font-medium ${isOverdue ? 'text-red-600' : 'text-green-600'}`}>
-                              {isOverdue ? `+${selisihHari} hari` : `${selisihHari} hari`}
+                            <span
+                              className={`font-medium ${isOverdue ? "text-red-600" : "text-green-600"}`}
+                            >
+                              {isOverdue
+                                ? `+${selisihHari} hari`
+                                : `${selisihHari} hari`}
                             </span>
                           </td>
                           <td className="py-3 px-2">
@@ -988,7 +1213,7 @@ export default function ReportDashboard() {
                     })}
                   </tbody>
                 </table>
-                
+
                 {filteredLicenses.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <FileBarChart className="h-12 w-12 text-gray-300 mx-auto mb-4" />
@@ -1005,9 +1230,20 @@ export default function ReportDashboard() {
                     <CardContent className="p-4">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-emerald-700 mb-1">
-                          {filteredLicenses.length > 0 ? Math.round((filteredLicenses.filter(l => l.totalSLA <= 14).length / filteredLicenses.length) * 100) : 0}%
+                          {filteredLicenses.length > 0
+                            ? Math.round(
+                                (filteredLicenses.filter(
+                                  (l) => l.totalSLA <= 14,
+                                ).length /
+                                  filteredLicenses.length) *
+                                  100,
+                              )
+                            : 0}
+                          %
                         </div>
-                        <div className="text-sm text-emerald-600">Tingkat Kepatuhan SLA</div>
+                        <div className="text-sm text-emerald-600">
+                          Tingkat Kepatuhan SLA
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1018,7 +1254,9 @@ export default function ReportDashboard() {
                         <div className="text-2xl font-bold text-blue-700 mb-1">
                           {reportStats.avgSLA}
                         </div>
-                        <div className="text-sm text-blue-600">Rata-rata Waktu Penyelesaian</div>
+                        <div className="text-sm text-blue-600">
+                          Rata-rata Waktu Penyelesaian
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1027,9 +1265,14 @@ export default function ReportDashboard() {
                     <CardContent className="p-4">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-red-700 mb-1">
-                          {filteredLicenses.filter(l => l.totalSLA > 14).length}
+                          {
+                            filteredLicenses.filter((l) => l.totalSLA > 14)
+                              .length
+                          }
                         </div>
-                        <div className="text-sm text-red-600">Perizinan Terlambat</div>
+                        <div className="text-sm text-red-600">
+                          Perizinan Terlambat
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1052,7 +1295,12 @@ export default function ReportDashboard() {
                       {reportStats.draft}
                     </p>
                     <p className="text-xs text-gray-600">
-                      {reportStats.total > 0 ? Math.round((reportStats.draft / reportStats.total) * 100) : 0}% dari total
+                      {reportStats.total > 0
+                        ? Math.round(
+                            (reportStats.draft / reportStats.total) * 100,
+                          )
+                        : 0}
+                      % dari total
                     </p>
                   </div>
                   <FileText className="h-8 w-8 text-gray-600" />
@@ -1064,12 +1312,19 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-yellow-700">Dalam Proses</p>
+                    <p className="text-sm font-medium text-yellow-700">
+                      Dalam Proses
+                    </p>
                     <p className="text-2xl font-bold text-yellow-900">
                       {reportStats.proses}
                     </p>
                     <p className="text-xs text-yellow-600">
-                      {reportStats.total > 0 ? Math.round((reportStats.proses / reportStats.total) * 100) : 0}% dari total
+                      {reportStats.total > 0
+                        ? Math.round(
+                            (reportStats.proses / reportStats.total) * 100,
+                          )
+                        : 0}
+                      % dari total
                     </p>
                   </div>
                   <Clock className="h-8 w-8 text-yellow-600" />
@@ -1081,12 +1336,19 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-orange-700">Rekomendasi</p>
+                    <p className="text-sm font-medium text-orange-700">
+                      Rekomendasi
+                    </p>
                     <p className="text-2xl font-bold text-orange-900">
                       {reportStats.rekomendasi}
                     </p>
                     <p className="text-xs text-orange-600">
-                      {reportStats.total > 0 ? Math.round((reportStats.rekomendasi / reportStats.total) * 100) : 0}% dari total
+                      {reportStats.total > 0
+                        ? Math.round(
+                            (reportStats.rekomendasi / reportStats.total) * 100,
+                          )
+                        : 0}
+                      % dari total
                     </p>
                   </div>
                   <Clock className="h-8 w-8 text-orange-600" />
@@ -1098,12 +1360,19 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-green-700">Selesai</p>
+                    <p className="text-sm font-medium text-green-700">
+                      Selesai
+                    </p>
                     <p className="text-2xl font-bold text-green-900">
                       {reportStats.selesai}
                     </p>
                     <p className="text-xs text-green-600">
-                      {reportStats.total > 0 ? Math.round((reportStats.selesai / reportStats.total) * 100) : 0}% dari total
+                      {reportStats.total > 0
+                        ? Math.round(
+                            (reportStats.selesai / reportStats.total) * 100,
+                          )
+                        : 0}
+                      % dari total
                     </p>
                   </div>
                   <CheckCircle className="h-8 w-8 text-green-600" />
@@ -1115,12 +1384,19 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-red-700">Terlambat</p>
+                    <p className="text-sm font-medium text-red-700">
+                      Terlambat
+                    </p>
                     <p className="text-2xl font-bold text-red-900">
                       {reportStats.terlambat}
                     </p>
                     <p className="text-xs text-red-600">
-                      {reportStats.total > 0 ? Math.round((reportStats.terlambat / reportStats.total) * 100) : 0}% dari total
+                      {reportStats.total > 0
+                        ? Math.round(
+                            (reportStats.terlambat / reportStats.total) * 100,
+                          )
+                        : 0}
+                      % dari total
                     </p>
                   </div>
                   <AlertTriangle className="h-8 w-8 text-red-600" />
@@ -1139,14 +1415,17 @@ export default function ReportDashboard() {
                     Detail Laporan Status Perizinan
                   </CardTitle>
                   <p className="text-sm text-gray-600 mt-1">
-                    Overview lengkap status semua perizinan dengan timeline progress
+                    Overview lengkap status semua perizinan dengan timeline
+                    progress
                   </p>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleDownloadStatusPDF}
-                  disabled={isExportingStatusPDF || filteredLicenses.length === 0}
+                  disabled={
+                    isExportingStatusPDF || filteredLicenses.length === 0
+                  }
                   className="flex items-center gap-2"
                 >
                   <Download className="h-4 w-4" />
@@ -1160,52 +1439,107 @@ export default function ReportDashboard() {
                   <thead>
                     <tr className="border-b bg-gray-50">
                       <th className="text-left py-3 px-2 font-semibold">No</th>
-                      <th className="text-left py-3 px-2 font-semibold">Nama Izin</th>
-                      <th className="text-left py-3 px-2 font-semibold">Jenis Izin</th>
-                      <th className="text-left py-3 px-2 font-semibold">Sektor</th>
-                      <th className="text-left py-3 px-2 font-semibold">Status Saat Ini</th>
-                      <th className="text-left py-3 px-2 font-semibold">Tanggal Masuk</th>
-                      <th className="text-left py-3 px-2 font-semibold">Durasi Proses</th>
-                      <th className="text-left py-3 px-2 font-semibold">Estimasi Selesai</th>
-                      <th className="text-left py-3 px-2 font-semibold">Prioritas</th>
-                      <th className="text-left py-3 px-2 font-semibold">Petugas Penanggung Jawab</th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Nama Izin
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Jenis Izin
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Sektor
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Status Saat Ini
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Tanggal Masuk
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Durasi Proses
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Estimasi Selesai
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Prioritas
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Petugas Penanggung Jawab
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredLicenses.map((license, index) => {
-                      const tanggalMasuk = license.permohonanMasuk ? new Date(license.permohonanMasuk) : null;
-                      const tanggalSelesai = license.tglPenyerahanIzin ? new Date(license.tglPenyerahanIzin) : null;
-                      const isOverdue = overdueLicenses.some(ol => ol.id === license.id);
-                      
+                      const tanggalMasuk = license.permohonanMasuk
+                        ? new Date(license.permohonanMasuk)
+                        : null;
+                      const tanggalSelesai = license.tglPenyerahanIzin
+                        ? new Date(license.tglPenyerahanIzin)
+                        : null;
+                      const isOverdue = overdueLicenses.some(
+                        (ol) => ol.id === license.id,
+                      );
+
                       // Hitung durasi proses
-                      const durasiProses = tanggalMasuk ? 
-                        Math.floor((new Date().getTime() - tanggalMasuk.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-                      
+                      const durasiProses = tanggalMasuk
+                        ? Math.floor(
+                            (new Date().getTime() - tanggalMasuk.getTime()) /
+                              (1000 * 60 * 60 * 24),
+                          )
+                        : 0;
+
                       // Estimasi selesai (tanggal masuk + 14 hari)
-                      const estimasiSelesai = tanggalMasuk ? 
-                        new Date(tanggalMasuk.getTime() + (14 * 24 * 60 * 60 * 1000)) : null;
-                      
+                      const estimasiSelesai = tanggalMasuk
+                        ? new Date(
+                            tanggalMasuk.getTime() + 14 * 24 * 60 * 60 * 1000,
+                          )
+                        : null;
+
                       // Tentukan prioritas
                       const getPrioritas = () => {
-                        if (isOverdue) return { level: "Tinggi", color: "bg-red-100 text-red-800" };
-                        if (license.status === "proses" && durasiProses > 10) return { level: "Sedang", color: "bg-yellow-100 text-yellow-800" };
-                        if (license.status === "draft") return { level: "Rendah", color: "bg-gray-100 text-gray-800" };
-                        return { level: "Normal", color: "bg-blue-100 text-blue-800" };
+                        if (isOverdue)
+                          return {
+                            level: "Tinggi",
+                            color: "bg-red-100 text-red-800",
+                          };
+                        if (license.status === "proses" && durasiProses > 10)
+                          return {
+                            level: "Sedang",
+                            color: "bg-yellow-100 text-yellow-800",
+                          };
+                        if (license.status === "draft")
+                          return {
+                            level: "Rendah",
+                            color: "bg-gray-100 text-gray-800",
+                          };
+                        return {
+                          level: "Normal",
+                          color: "bg-blue-100 text-blue-800",
+                        };
                       };
-                      
+
                       const prioritas = getPrioritas();
-                      
+
                       return (
-                        <tr key={license.id} className={`border-b hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
+                        <tr
+                          key={license.id}
+                          className={`border-b hover:bg-gray-50 ${isOverdue ? "bg-red-50" : ""}`}
+                        >
                           <td className="py-3 px-2 font-medium">{index + 1}</td>
                           <td className="py-3 px-2">
-                            <div className="font-medium text-gray-900">{license.namaIzin}</div>
+                            <div className="font-medium text-gray-900">
+                              {license.namaIzin}
+                            </div>
                           </td>
                           <td className="py-3 px-2">
-                            <div className="text-sm text-gray-600">{license.jenisIzin}</div>
+                            <div className="text-sm text-gray-600">
+                              {license.jenisIzin}
+                            </div>
                           </td>
                           <td className="py-3 px-2">
-                            <div className="text-sm text-gray-600">{license.sektor || "-"}</div>
+                            <div className="text-sm text-gray-600">
+                              {license.sektor || "-"}
+                            </div>
                           </td>
                           <td className="py-3 px-2">
                             {/* Prioritas: Tampilkan status verifikasi ditolak terlebih dahulu */}
@@ -1217,7 +1551,9 @@ export default function ReportDashboard() {
                                 </Badge>
                                 {license.verificationNotes && (
                                   <div className="text-xs text-red-700 mt-1 max-w-xs">
-                                    <span className="font-medium">Alasan: </span>
+                                    <span className="font-medium">
+                                      Alasan:{" "}
+                                    </span>
                                     {license.verificationNotes}
                                   </div>
                                 )}
@@ -1250,15 +1586,21 @@ export default function ReportDashboard() {
                             ) : null}
                           </td>
                           <td className="py-3 px-2">
-                            {tanggalMasuk ? tanggalMasuk.toLocaleDateString("id-ID") : "-"}
+                            {tanggalMasuk
+                              ? tanggalMasuk.toLocaleDateString("id-ID")
+                              : "-"}
                           </td>
                           <td className="py-3 px-2">
-                            <span className={`font-medium ${isOverdue ? 'text-red-600' : 'text-gray-700'}`}>
+                            <span
+                              className={`font-medium ${isOverdue ? "text-red-600" : "text-gray-700"}`}
+                            >
                               {durasiProses} hari
                             </span>
                           </td>
                           <td className="py-3 px-2">
-                            {estimasiSelesai ? estimasiSelesai.toLocaleDateString("id-ID") : "-"}
+                            {estimasiSelesai
+                              ? estimasiSelesai.toLocaleDateString("id-ID")
+                              : "-"}
                           </td>
                           <td className="py-3 px-2">
                             <Badge className={prioritas.color}>
@@ -1275,7 +1617,7 @@ export default function ReportDashboard() {
                     })}
                   </tbody>
                 </table>
-                
+
                 {filteredLicenses.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
@@ -1294,7 +1636,9 @@ export default function ReportDashboard() {
                         <div className="text-2xl font-bold text-blue-700 mb-1">
                           {reportStats.total}
                         </div>
-                        <div className="text-sm text-blue-600">Total Perizinan</div>
+                        <div className="text-sm text-blue-600">
+                          Total Perizinan
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1303,9 +1647,16 @@ export default function ReportDashboard() {
                     <CardContent className="p-4">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-green-700 mb-1">
-                          {reportStats.total > 0 ? Math.round((reportStats.selesai / reportStats.total) * 100) : 0}%
+                          {reportStats.total > 0
+                            ? Math.round(
+                                (reportStats.selesai / reportStats.total) * 100,
+                              )
+                            : 0}
+                          %
                         </div>
-                        <div className="text-sm text-green-600">Tingkat Penyelesaian</div>
+                        <div className="text-sm text-green-600">
+                          Tingkat Penyelesaian
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1316,7 +1667,9 @@ export default function ReportDashboard() {
                         <div className="text-2xl font-bold text-yellow-700 mb-1">
                           {reportStats.proses + reportStats.rekomendasi}
                         </div>
-                        <div className="text-sm text-yellow-600">Dalam Proses</div>
+                        <div className="text-sm text-yellow-600">
+                          Dalam Proses
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1327,7 +1680,9 @@ export default function ReportDashboard() {
                         <div className="text-2xl font-bold text-red-700 mb-1">
                           {reportStats.terlambat}
                         </div>
-                        <div className="text-sm text-red-600">Perlu Perhatian</div>
+                        <div className="text-sm text-red-600">
+                          Perlu Perhatian
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1345,7 +1700,9 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-blue-700">Total Sektor</p>
+                    <p className="text-sm font-medium text-blue-700">
+                      Total Sektor
+                    </p>
                     <p className="text-2xl font-bold text-blue-900">
                       {sectorData.length}
                     </p>
@@ -1360,12 +1717,16 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-emerald-700">Sektor Terbanyak</p>
+                    <p className="text-sm font-medium text-emerald-700">
+                      Sektor Terbanyak
+                    </p>
                     <p className="text-lg font-bold text-emerald-900">
                       {sectorData.length > 0 ? sectorData[0].sector : "-"}
                     </p>
                     <p className="text-xs text-emerald-600">
-                      {sectorData.length > 0 ? `${sectorData[0].count} perizinan` : ""}
+                      {sectorData.length > 0
+                        ? `${sectorData[0].count} perizinan`
+                        : ""}
                     </p>
                   </div>
                   <TrendingUp className="h-8 w-8 text-emerald-600" />
@@ -1377,11 +1738,17 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-purple-700">Rata-rata per Sektor</p>
-                    <p className="text-2xl font-bold text-purple-900">
-                      {sectorData.length > 0 ? Math.round(reportStats.total / sectorData.length) : 0}
+                    <p className="text-sm font-medium text-purple-700">
+                      Rata-rata per Sektor
                     </p>
-                    <p className="text-xs text-purple-600">perizinan per sektor</p>
+                    <p className="text-2xl font-bold text-purple-900">
+                      {sectorData.length > 0
+                        ? Math.round(reportStats.total / sectorData.length)
+                        : 0}
+                    </p>
+                    <p className="text-xs text-purple-600">
+                      perizinan per sektor
+                    </p>
                   </div>
                   <FileText className="h-8 w-8 text-purple-600" />
                 </div>
@@ -1392,9 +1759,16 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-orange-700">Diversifikasi</p>
+                    <p className="text-sm font-medium text-orange-700">
+                      Diversifikasi
+                    </p>
                     <p className="text-2xl font-bold text-orange-900">
-                      {reportStats.total > 0 ? Math.round((sectorData.length / reportStats.total) * 100) : 0}%
+                      {reportStats.total > 0
+                        ? Math.round(
+                            (sectorData.length / reportStats.total) * 100,
+                          )
+                        : 0}
+                      %
                     </p>
                     <p className="text-xs text-orange-600">distribusi sektor</p>
                   </div>
@@ -1414,7 +1788,8 @@ export default function ReportDashboard() {
                     Detail Laporan Analisis Sektor
                   </CardTitle>
                   <p className="text-sm text-gray-600 mt-1">
-                    Analisis perizinan berdasarkan jenis izin dengan performa dan tren
+                    Analisis perizinan berdasarkan jenis izin dengan performa
+                    dan tren
                   </p>
                 </div>
                 <Button
@@ -1435,88 +1810,154 @@ export default function ReportDashboard() {
                   <thead>
                     <tr className="border-b bg-gray-50">
                       <th className="text-left py-3 px-2 font-semibold">No</th>
-                      <th className="text-left py-3 px-2 font-semibold">Nama Sektor</th>
-                      <th className="text-left py-3 px-2 font-semibold">Total Permohonan</th>
-                      <th className="text-left py-3 px-2 font-semibold">Selesai</th>
-                      <th className="text-left py-3 px-2 font-semibold">Dalam Proses</th>
-                      <th className="text-left py-3 px-2 font-semibold">Terlambat</th>
-                      <th className="text-left py-3 px-2 font-semibold">Rata-rata SLA</th>
-                      <th className="text-left py-3 px-2 font-semibold">Tingkat Penyelesaian</th>
-                      <th className="text-left py-3 px-2 font-semibold">Tren Bulan Ini</th>
-                      <th className="text-left py-3 px-2 font-semibold">Kompleksitas</th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Nama Sektor
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Total Permohonan
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Selesai
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Dalam Proses
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Terlambat
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Rata-rata SLA
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Tingkat Penyelesaian
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Tren Bulan Ini
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold">
+                        Kompleksitas
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {sectorData.map(({ sector, count }, index) => {
                       // Hitung statistik untuk sektor ini
-                      const sectorLicenses = filteredLicenses.filter(l => l.sektor === sector);
-                      const selesai = sectorLicenses.filter(l => l.status === "selesai").length;
-                      const dalamProses = sectorLicenses.filter(l => l.status === "proses" || l.status === "rekomendasi").length;
-                      const terlambat = sectorLicenses.filter(l => 
-                        overdueLicenses.some(ol => ol.id === l.id)
+                      const sectorLicenses = filteredLicenses.filter(
+                        (l) => l.sektor === sector,
+                      );
+                      const selesai = sectorLicenses.filter(
+                        (l) => l.status === "selesai",
                       ).length;
-                      
+                      const dalamProses = sectorLicenses.filter(
+                        (l) =>
+                          l.status === "proses" || l.status === "rekomendasi",
+                      ).length;
+                      const terlambat = sectorLicenses.filter((l) =>
+                        overdueLicenses.some((ol) => ol.id === l.id),
+                      ).length;
+
                       // Hitung rata-rata SLA
-                      const licensesWithSLA = sectorLicenses.filter(l => l.totalSLA > 0);
-                      const avgSLA = licensesWithSLA.length > 0 
-                        ? licensesWithSLA.reduce((sum, l) => sum + l.totalSLA, 0) / licensesWithSLA.length 
-                        : 0;
-                      
+                      const licensesWithSLA = sectorLicenses.filter(
+                        (l) => l.totalSLA > 0,
+                      );
+                      const avgSLA =
+                        licensesWithSLA.length > 0
+                          ? licensesWithSLA.reduce(
+                              (sum, l) => sum + l.totalSLA,
+                              0,
+                            ) / licensesWithSLA.length
+                          : 0;
+
                       // Tingkat penyelesaian
-                      const tingkatPenyelesaian = count > 0 ? Math.round((selesai / count) * 100) : 0;
-                      
+                      const tingkatPenyelesaian =
+                        count > 0 ? Math.round((selesai / count) * 100) : 0;
+
                       // Tren bulan ini (simulasi)
-                      const trenBulanIni = Math.random() > 0.5 ? "+" + Math.floor(Math.random() * 20) + "%" : "-" + Math.floor(Math.random() * 10) + "%";
-                      
+                      const trenBulanIni =
+                        Math.random() > 0.5
+                          ? "+" + Math.floor(Math.random() * 20) + "%"
+                          : "-" + Math.floor(Math.random() * 10) + "%";
+
                       // Tentukan kompleksitas
                       const getKompleksitas = () => {
-                        if (avgSLA > 12) return { level: "Tinggi", color: "bg-red-100 text-red-800" };
-                        if (avgSLA > 8) return { level: "Sedang", color: "bg-yellow-100 text-yellow-800" };
-                        return { level: "Rendah", color: "bg-green-100 text-green-800" };
+                        if (avgSLA > 12)
+                          return {
+                            level: "Tinggi",
+                            color: "bg-red-100 text-red-800",
+                          };
+                        if (avgSLA > 8)
+                          return {
+                            level: "Sedang",
+                            color: "bg-yellow-100 text-yellow-800",
+                          };
+                        return {
+                          level: "Rendah",
+                          color: "bg-green-100 text-green-800",
+                        };
                       };
-                      
+
                       const kompleksitas = getKompleksitas();
-                      
+
                       return (
                         <tr key={sector} className="border-b hover:bg-gray-50">
                           <td className="py-3 px-2 font-medium">{index + 1}</td>
                           <td className="py-3 px-2">
-                            <div className="font-medium text-gray-900">{sector}</div>
+                            <div className="font-medium text-gray-900">
+                              {sector}
+                            </div>
                           </td>
                           <td className="py-3 px-2">
-                            <div className="font-semibold text-blue-700">{count}</div>
-                            <div className="text-xs text-gray-500">permohonan</div>
+                            <div className="font-semibold text-blue-700">
+                              {count}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              permohonan
+                            </div>
                           </td>
                           <td className="py-3 px-2">
-                            <div className="font-medium text-green-700">{selesai}</div>
+                            <div className="font-medium text-green-700">
+                              {selesai}
+                            </div>
                             <div className="text-xs text-gray-500">selesai</div>
                           </td>
                           <td className="py-3 px-2">
-                            <div className="font-medium text-yellow-700">{dalamProses}</div>
+                            <div className="font-medium text-yellow-700">
+                              {dalamProses}
+                            </div>
                             <div className="text-xs text-gray-500">proses</div>
                           </td>
                           <td className="px-2 py-3">
-                            <div className="font-medium text-red-700">{terlambat}</div>
-                            <div className="text-xs text-gray-500">terlambat</div>
+                            <div className="font-medium text-red-700">
+                              {terlambat}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              terlambat
+                            </div>
                           </td>
                           <td className="py-3 px-2">
-                            <span className={`font-medium ${avgSLA > 14 ? 'text-red-600' : avgSLA > 10 ? 'text-yellow-600' : 'text-green-600'}`}>
+                            <span
+                              className={`font-medium ${avgSLA > 14 ? "text-red-600" : avgSLA > 10 ? "text-yellow-600" : "text-green-600"}`}
+                            >
                               {Math.round(avgSLA * 10) / 10} hari
                             </span>
                           </td>
                           <td className="py-3 px-2">
                             <div className="flex items-center gap-2">
                               <div className="w-16 bg-gray-200 rounded-full h-2">
-                                <div 
-                                  className={`h-2 rounded-full ${tingkatPenyelesaian >= 80 ? 'bg-green-600' : tingkatPenyelesaian >= 60 ? 'bg-yellow-600' : 'bg-red-600'}`}
+                                <div
+                                  className={`h-2 rounded-full ${tingkatPenyelesaian >= 80 ? "bg-green-600" : tingkatPenyelesaian >= 60 ? "bg-yellow-600" : "bg-red-600"}`}
                                   style={{ width: `${tingkatPenyelesaian}%` }}
                                 ></div>
                               </div>
-                              <span className="text-sm font-medium">{tingkatPenyelesaian}%</span>
+                              <span className="text-sm font-medium">
+                                {tingkatPenyelesaian}%
+                              </span>
                             </div>
                           </td>
                           <td className="py-3 px-2">
-                            <span className={`text-sm font-medium ${trenBulanIni.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
+                            <span
+                              className={`text-sm font-medium ${trenBulanIni.startsWith("+") ? "text-green-600" : "text-red-600"}`}
+                            >
                               {trenBulanIni}
                             </span>
                           </td>
@@ -1530,7 +1971,7 @@ export default function ReportDashboard() {
                     })}
                   </tbody>
                 </table>
-                
+
                 {sectorData.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <BarChart3 className="h-12 w-12 text-gray-300 mx-auto mb-4" />
@@ -1545,29 +1986,40 @@ export default function ReportDashboard() {
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg">Distribusi Perizinan per Sektor</CardTitle>
+                      <CardTitle className="text-lg">
+                        Distribusi Perizinan per Sektor
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {sectorData.slice(0, 5).map(({ sector, count }, index) => (
-                          <div key={sector} className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-sm font-medium text-blue-700">
-                                {index + 1}
+                        {sectorData
+                          .slice(0, 5)
+                          .map(({ sector, count }, index) => (
+                            <div
+                              key={sector}
+                              className="flex items-center justify-between"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-sm font-medium text-blue-700">
+                                  {index + 1}
+                                </div>
+                                <span className="text-sm font-medium">
+                                  {sector}
+                                </span>
                               </div>
-                              <span className="text-sm font-medium">{sector}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-32 bg-gray-200 rounded-full h-2">
-                                <div 
-                                  className="bg-blue-600 h-2 rounded-full"
-                                  style={{ width: `${(count / reportStats.total) * 100}%` }}
-                                ></div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-32 bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className="bg-blue-600 h-2 rounded-full"
+                                    style={{
+                                      width: `${(count / reportStats.total) * 100}%`,
+                                    }}
+                                  ></div>
+                                </div>
+                                <Badge variant="secondary">{count}</Badge>
                               </div>
-                              <Badge variant="secondary">{count}</Badge>
                             </div>
-                          </div>
-                        ))}
+                          ))}
                         {sectorData.length > 5 && (
                           <div className="text-center text-sm text-gray-500">
                             Dan {sectorData.length - 5} sektor lainnya...
@@ -1579,33 +2031,45 @@ export default function ReportDashboard() {
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg">Top 5 Sektor Terbanyak</CardTitle>
+                      <CardTitle className="text-lg">
+                        Top 5 Sektor Terbanyak
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {sectorData.slice(0, 5).map(({ sector, count }, index) => {
-                          const persentase = Math.round((count / reportStats.total) * 100);
-                          return (
-                            <div key={sector} className="space-y-2">
-                              <div className="flex justify-between text-sm">
-                                <span className="font-medium">{sector}</span>
-                                <span className="text-gray-600">{count} ({persentase}%)</span>
+                        {sectorData
+                          .slice(0, 5)
+                          .map(({ sector, count }, index) => {
+                            const persentase = Math.round(
+                              (count / reportStats.total) * 100,
+                            );
+                            return (
+                              <div key={sector} className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="font-medium">{sector}</span>
+                                  <span className="text-gray-600">
+                                    {count} ({persentase}%)
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full ${
+                                      index === 0
+                                        ? "bg-emerald-600"
+                                        : index === 1
+                                          ? "bg-blue-600"
+                                          : index === 2
+                                            ? "bg-purple-600"
+                                            : index === 3
+                                              ? "bg-orange-600"
+                                              : "bg-pink-600"
+                                    }`}
+                                    style={{ width: `${persentase}%` }}
+                                  ></div>
+                                </div>
                               </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div 
-                                  className={`h-2 rounded-full ${
-                                    index === 0 ? 'bg-emerald-600' :
-                                    index === 1 ? 'bg-blue-600' :
-                                    index === 2 ? 'bg-purple-600' :
-                                    index === 3 ? 'bg-orange-600' :
-                                    'bg-pink-600'
-                                  }`}
-                                  style={{ width: `${persentase}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
                     </CardContent>
                   </Card>
@@ -1623,7 +2087,9 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-blue-700">Total Periode</p>
+                    <p className="text-sm font-medium text-blue-700">
+                      Total Periode
+                    </p>
                     <p className="text-2xl font-bold text-blue-900">
                       {selectedPeriod === "all" ? "Semua" : "Terfilter"}
                     </p>
@@ -1638,11 +2104,15 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-emerald-700">Permohonan Masuk</p>
+                    <p className="text-sm font-medium text-emerald-700">
+                      Permohonan Masuk
+                    </p>
                     <p className="text-2xl font-bold text-emerald-900">
                       {filteredLicenses.length}
                     </p>
-                    <p className="text-xs text-emerald-600">dalam periode ini</p>
+                    <p className="text-xs text-emerald-600">
+                      dalam periode ini
+                    </p>
                   </div>
                   <TrendingUp className="h-8 w-8 text-emerald-600" />
                 </div>
@@ -1653,11 +2123,15 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-purple-700">Rata-rata SLA</p>
+                    <p className="text-sm font-medium text-purple-700">
+                      Rata-rata SLA
+                    </p>
                     <p className="text-2xl font-bold text-purple-900">
                       {reportStats.avgSLA}
                     </p>
-                    <p className="text-xs text-purple-600">hari dalam periode</p>
+                    <p className="text-xs text-purple-600">
+                      hari dalam periode
+                    </p>
                   </div>
                   <Clock className="h-8 w-8 text-purple-600" />
                 </div>
@@ -1668,11 +2142,20 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-orange-700">Tingkat Penyelesaian</p>
-                    <p className="text-2xl font-bold text-orange-900">
-                      {reportStats.total > 0 ? Math.round((reportStats.selesai / reportStats.total) * 100) : 0}%
+                    <p className="text-sm font-medium text-orange-700">
+                      Tingkat Penyelesaian
                     </p>
-                    <p className="text-xs text-orange-600">selesai tepat waktu</p>
+                    <p className="text-2xl font-bold text-orange-900">
+                      {reportStats.total > 0
+                        ? Math.round(
+                            (reportStats.selesai / reportStats.total) * 100,
+                          )
+                        : 0}
+                      %
+                    </p>
+                    <p className="text-xs text-orange-600">
+                      selesai tepat waktu
+                    </p>
                   </div>
                   <CheckCircle className="h-8 w-8 text-orange-600" />
                 </div>
@@ -1687,181 +2170,366 @@ export default function ReportDashboard() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Calendar className="h-5 w-5 text-blue-600" />
-                    Detail Laporan Periode Waktu
+                    Detail {periodeTabLabel}
                   </CardTitle>
                   <p className="text-sm text-gray-600 mt-1">
-                    Analisis trend dan pola perizinan berdasarkan waktu dengan perbandingan performa
+                    Analisis trend dan pola perizinan berdasarkan waktu dengan
+                    perbandingan performa
                   </p>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleDownloadPeriodePDF}
-                  disabled={isExportingPeriodePDF || filteredLicenses.length === 0}
+                  onClick={isAdmin ? handleDownloadSurveyReportPDF : handleDownloadPeriodePDF}
+                  disabled={
+                    isAdmin
+                      ? isExportingSurveyPDF || displayedSurveyReports.length === 0
+                      : isExportingPeriodePDF || filteredLicenses.length === 0
+                  }
                   className="flex items-center gap-2"
                 >
                   <Download className="h-4 w-4" />
-                  {isExportingPeriodePDF ? "Mengunduh..." : "Download PDF"}
+                  {isAdmin
+                    ? isExportingSurveyPDF
+                      ? "Mengunduh..."
+                      : "Download PDF"
+                    : isExportingPeriodePDF
+                    ? "Mengunduh..."
+                    : "Download PDF"}
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="text-left py-3 px-2 font-semibold">No</th>
-                      <th className="text-left py-3 px-2 font-semibold">Periode</th>
-                      <th className="text-left py-3 px-2 font-semibold">Total Permohonan</th>
-                      <th className="text-left py-3 px-2 font-semibold">Permohonan Selesai</th>
-                      <th className="text-left py-3 px-2 font-semibold">Permohonan Terlambat</th>
-                      <th className="text-left py-3 px-2 font-semibold">Rata-rata SLA</th>
-                      <th className="text-left py-3 px-2 font-semibold">Tingkat Penyelesaian</th>
-                      <th className="text-left py-3 px-2 font-semibold">Perbandingan Bulan Lalu</th>
-                      <th className="text-left py-3 px-2 font-semibold">Target vs Realisasi</th>
-                      <th className="text-left py-3 px-2 font-semibold">Catatan Khusus</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      // Generate data periode berdasarkan filter yang dipilih
-                      const generatePeriodData = () => {
-                        const periods = [];
-                        const now = new Date();
-                        
-                        if (selectedPeriod === "all") {
-                          // Generate data untuk 12 bulan terakhir
-                          for (let i = 11; i >= 0; i--) {
-                            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                            const monthName = date.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
-                            periods.push({
-                              period: monthName,
-                              date: date,
-                              licenses: licenses.filter(l => {
-                                // Gunakan permohonanMasuk sebagai tanggal referensi, fallback ke createdAt jika tidak ada
-                                const licenseDateStr = l.permohonanMasuk || l.createdAt;
-                                if (!licenseDateStr) return false;
-                                
-                                const licenseDate = new Date(licenseDateStr);
-                                return licenseDate.getMonth() === date.getMonth() && 
-                                       licenseDate.getFullYear() === date.getFullYear();
-                              })
-                            });
-                          }
-                        } else {
-                          // Generate data untuk periode yang dipilih
-                          const periodNames = {
-                            "week": "1 Minggu Terakhir",
-                            "month": "1 Bulan Terakhir", 
-                            "quarter": "3 Bulan Terakhir",
-                            "year": "1 Tahun Terakhir"
-                          };
-                          
-                          periods.push({
-                            period: periodNames[selectedPeriod as keyof typeof periodNames],
-                            date: now,
-                            licenses: filteredLicenses
-                          });
-                        }
-                        
-                        return periods;
-                      };
-                      
-                      const periodData = generatePeriodData();
-                      
-                      return periodData.map(({ period, licenses: periodLicenses }, index) => {
-                        const total = periodLicenses.length;
-                        const selesai = periodLicenses.filter(l => l.status === "selesai").length;
-                        const terlambat = periodLicenses.filter(l => 
-                          overdueLicenses.some(ol => ol.id === l.id)
-                        ).length;
-                        
-                        // Hitung rata-rata SLA
-                        const licensesWithSLA = periodLicenses.filter(l => l.totalSLA > 0);
-                        const avgSLA = licensesWithSLA.length > 0 
-                          ? licensesWithSLA.reduce((sum, l) => sum + l.totalSLA, 0) / licensesWithSLA.length 
-                          : 0;
-                        
-                        const tingkatPenyelesaian = total > 0 ? Math.round((selesai / total) * 100) : 0;
-                        
-                        // Simulasi perbandingan bulan lalu
-                        const perbandinganBulanLalu = Math.random() > 0.5 ? 
-                          "+" + Math.floor(Math.random() * 30) + "%" : 
-                          "-" + Math.floor(Math.random() * 15) + "%";
-                        
-                        // Target vs Realisasi (target 90% penyelesaian)
-                        const targetPenyelesaian = 90;
-                        const realisasiPenyelesaian = tingkatPenyelesaian;
-                        const pencapaianTarget = Math.round((realisasiPenyelesaian / targetPenyelesaian) * 100);
-                        
-                        // Catatan khusus berdasarkan performa
-                        const getCatatanKhusus = () => {
-                          if (tingkatPenyelesaian >= 95) return "Performa excellent";
-                          if (tingkatPenyelesaian >= 85) return "Performa baik";
-                          if (tingkatPenyelesaian >= 70) return "Performa cukup";
-                          if (terlambat > total * 0.2) return "Banyak keterlambatan";
-                          return "Perlu perhatian";
-                        };
-                        
-                        return (
-                          <tr key={period} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-2 font-medium">{index + 1}</td>
-                            <td className="py-3 px-2">
-                              <div className="font-medium text-gray-900">{period}</div>
-                            </td>
-                            <td className="py-3 px-2">
-                              <div className="font-semibold text-blue-700">{total}</div>
-                              <div className="text-xs text-gray-500">permohonan</div>
-                            </td>
-                            <td className="py-3 px-2">
-                              <div className="font-medium text-green-700">{selesai}</div>
-                              <div className="text-xs text-gray-500">selesai</div>
-                            </td>
-                            <td className="py-3 px-2">
-                              <div className="font-medium text-red-700">{terlambat}</div>
-                              <div className="text-xs text-gray-500">terlambat</div>
-                            </td>
-                            <td className="py-3 px-2">
-                              <span className={`font-medium ${avgSLA > 14 ? 'text-red-600' : avgSLA > 10 ? 'text-yellow-600' : 'text-green-600'}`}>
-                                {Math.round(avgSLA * 10) / 10} hari
-                              </span>
-                            </td>
-                            <td className="py-3 px-2">
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 bg-gray-200 rounded-full h-2">
-                                  <div 
-                                    className={`h-2 rounded-full ${tingkatPenyelesaian >= 90 ? 'bg-green-600' : tingkatPenyelesaian >= 70 ? 'bg-yellow-600' : 'bg-red-600'}`}
-                                    style={{ width: `${tingkatPenyelesaian}%` }}
-                                  ></div>
-                                </div>
-                                <span className="text-sm font-medium">{tingkatPenyelesaian}%</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-2">
-                              <span className={`text-sm font-medium ${perbandinganBulanLalu.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
-                                {perbandinganBulanLalu}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2">
-                              <div className="flex items-center gap-1">
-                                <span className={`text-sm font-medium ${pencapaianTarget >= 100 ? 'text-green-600' : pencapaianTarget >= 80 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                  {pencapaianTarget}%
-                                </span>
-                                <span className="text-xs text-gray-500">dari target</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-2">
-                              <span className={`text-sm ${tingkatPenyelesaian >= 90 ? 'text-green-600' : tingkatPenyelesaian >= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                {getCatatanKhusus()}
-                              </span>
+                  {isAdmin ? (
+                    <>
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="text-left py-3 px-2 font-semibold">No</th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Kode Tracing
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Nama Izin
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Nama Pemohon
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Lokasi
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Jadwal Survei
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Hasil Survei
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayedSurveyReports.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={7}
+                              className="text-center py-10 text-slate-500"
+                            >
+                              Tidak ada data survei tersedia.
                             </td>
                           </tr>
-                        );
-                      });
-                    })()}
-                  </tbody>
+                        ) : (
+                          displayedSurveyReports.map((survey, index) => (
+                            <tr key={survey.id} className="border-b hover:bg-gray-50">
+                              <td className="py-3 px-2 font-medium">{index + 1}</td>
+                              <td className="py-3 px-2 font-mono text-xs text-emerald-700">
+                                {survey.trackingCode || "-"}
+                              </td>
+                              <td className="py-3 px-2">
+                                <div className="font-medium text-slate-900">
+                                  {survey.namaIzin || "-"}
+                                </div>
+                                {survey.jenisIzin && (
+                                  <div className="text-xs text-gray-500">
+                                    {survey.jenisIzin}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-2">
+                                {survey.pemohonNama || "-"}
+                              </td>
+                              <td className="py-3 px-2 max-w-[180px] truncate text-slate-600">
+                                {survey.lokasi || "-"}
+                              </td>
+                              <td className="py-3 px-2">
+                                {survey.tanggalSurvey ? (
+                                  <div>
+                                    <div className="text-sm">
+                                      {new Date(survey.tanggalSurvey).toLocaleDateString(
+                                        "id-ID",
+                                      )}
+                                    </div>
+                                    {survey.waktuSurvey && (
+                                      <div className="text-xs text-slate-500">
+                                        {survey.waktuSurvey}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">
+                                    Belum dijadwalkan
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-2">
+                                <div className="line-clamp-2 text-sm text-slate-700">
+                                  {survey.surveyResult || "-"}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </>
+                  ) : (
+                    <>
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="text-left py-3 px-2 font-semibold">No</th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Periode
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Total Permohonan
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Permohonan Selesai
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Permohonan Terlambat
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Rata-rata SLA
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Tingkat Penyelesaian
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Perbandingan Bulan Lalu
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Target vs Realisasi
+                          </th>
+                          <th className="text-left py-3 px-2 font-semibold">
+                            Catatan Khusus
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          // Generate data periode berdasarkan filter yang dipilih
+                          const generatePeriodData = () => {
+                            const periods = [];
+                            const now = new Date();
+
+                            if (selectedPeriod === "all") {
+                              // Generate data untuk 12 bulan terakhir
+                              for (let i = 11; i >= 0; i--) {
+                                const date = new Date(
+                                  now.getFullYear(),
+                                  now.getMonth() - i,
+                                  1,
+                                );
+                                const monthName = date.toLocaleDateString("id-ID", {
+                                  month: "long",
+                                  year: "numeric",
+                                });
+                                periods.push({
+                                  period: monthName,
+                                  date: date,
+                                  licenses: licenses.filter((l) => {
+                                    // Gunakan permohonanMasuk sebagai tanggal referensi, fallback ke createdAt jika tidak ada
+                                    const licenseDateStr =
+                                      l.permohonanMasuk || l.createdAt;
+                                    if (!licenseDateStr) return false;
+
+                                    const licenseDate = new Date(licenseDateStr);
+                                    return (
+                                      licenseDate.getMonth() === date.getMonth() &&
+                                      licenseDate.getFullYear() ===
+                                        date.getFullYear()
+                                    );
+                                  }),
+                                });
+                              }
+                            } else {
+                              // Generate data untuk periode yang dipilih
+                              const periodNames = {
+                                week: "1 Minggu Terakhir",
+                                month: "1 Bulan Terakhir",
+                                quarter: "3 Bulan Terakhir",
+                                year: "1 Tahun Terakhir",
+                              };
+
+                              periods.push({
+                                period:
+                                  periodNames[
+                                    selectedPeriod as keyof typeof periodNames
+                                  ],
+                                date: now,
+                                licenses: filteredLicenses,
+                              });
+                            }
+
+                            return periods;
+                          };
+
+                          const periodData = generatePeriodData();
+
+                          return periodData.map(
+                            ({ period, licenses: periodLicenses }, index) => {
+                              const total = periodLicenses.length;
+                              const selesai = periodLicenses.filter(
+                                (l) => l.status === "selesai",
+                              ).length;
+                              const terlambat = periodLicenses.filter((l) =>
+                                overdueLicenses.some((ol) => ol.id === l.id),
+                              ).length;
+
+                              // Hitung rata-rata SLA
+                              const licensesWithSLA = periodLicenses.filter(
+                                (l) => l.totalSLA > 0,
+                              );
+                              const avgSLA =
+                                licensesWithSLA.length > 0
+                                  ? licensesWithSLA.reduce(
+                                      (sum, l) => sum + l.totalSLA,
+                                      0,
+                                    ) / licensesWithSLA.length
+                                  : 0;
+
+                              const tingkatPenyelesaian =
+                                total > 0 ? Math.round((selesai / total) * 100) : 0;
+
+                              // Simulasi perbandingan bulan lalu
+                              const perbandinganBulanLalu =
+                                Math.random() > 0.5
+                                  ? "+" + Math.floor(Math.random() * 30) + "%"
+                                  : "-" + Math.floor(Math.random() * 15) + "%";
+
+                              // Target vs Realisasi (target 90% penyelesaian)
+                              const targetPenyelesaian = 90;
+                              const realisasiPenyelesaian = tingkatPenyelesaian;
+                              const pencapaianTarget = Math.round(
+                                (realisasiPenyelesaian / targetPenyelesaian) * 100,
+                              );
+
+                              // Catatan khusus berdasarkan performa
+                              const getCatatanKhusus = () => {
+                                if (tingkatPenyelesaian >= 95)
+                                  return "Performa excellent";
+                                if (tingkatPenyelesaian >= 85)
+                                  return "Performa baik";
+                                if (tingkatPenyelesaian >= 70)
+                                  return "Performa cukup";
+                                if (terlambat > total * 0.2)
+                                  return "Banyak keterlambatan";
+                                return "Perlu perhatian";
+                              };
+
+                              return (
+                                <tr
+                                  key={period}
+                                  className="border-b hover:bg-gray-50"
+                                >
+                                  <td className="py-3 px-2 font-medium">
+                                    {index + 1}
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <div className="font-medium text-gray-900">
+                                      {period}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <div className="font-semibold text-blue-700">
+                                      {total}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      permohonan
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <div className="font-medium text-green-700">
+                                      {selesai}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      selesai
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <div className="font-medium text-red-700">
+                                      {terlambat}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      terlambat
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <span
+                                      className={`font-medium ${avgSLA > 14 ? "text-red-600" : avgSLA > 10 ? "text-yellow-600" : "text-green-600"}`}
+                                    >
+                                      {Math.round(avgSLA * 10) / 10} hari
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-16 bg-gray-200 rounded-full h-2">
+                                        <div
+                                          className={`h-2 rounded-full ${tingkatPenyelesaian >= 90 ? "bg-green-600" : tingkatPenyelesaian >= 70 ? "bg-yellow-600" : "bg-red-600"}`}
+                                          style={{
+                                            width: `${tingkatPenyelesaian}%`,
+                                          }}
+                                        ></div>
+                                      </div>
+                                      <span className="text-sm font-medium">
+                                        {tingkatPenyelesaian}%
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <span
+                                      className={`text-sm font-medium ${perbandinganBulanLalu.startsWith("+") ? "text-green-600" : "text-red-600"}`}
+                                    >
+                                      {perbandinganBulanLalu}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <div className="flex items-center gap-1">
+                                      <span
+                                        className={`text-sm font-medium ${pencapaianTarget >= 100 ? "text-green-600" : pencapaianTarget >= 80 ? "text-yellow-600" : "text-red-600"}`}
+                                      >
+                                        {pencapaianTarget}%
+                                      </span>
+                                      <span className="text-xs text-gray-500">
+                                        dari target
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <span
+                                      className={`text-sm ${tingkatPenyelesaian >= 90 ? "text-green-600" : tingkatPenyelesaian >= 70 ? "text-yellow-600" : "text-red-600"}`}
+                                    >
+                                      {getCatatanKhusus()}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            },
+                          );
+                        })()}
+                      </tbody>
+                    </>
+                  )}
                 </table>
-                
                 {filteredLicenses.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
@@ -1876,51 +2544,76 @@ export default function ReportDashboard() {
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg">Trend Permohonan per Bulan</CardTitle>
+                      <CardTitle className="text-lg">
+                        Trend Permohonan per Bulan
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
                         {(() => {
                           // Generate data untuk 6 bulan terakhir
-                          const monthlyData: { month: string; count: number }[] = [];
+                          const monthlyData: {
+                            month: string;
+                            count: number;
+                          }[] = [];
                           const now = new Date();
-                          
+
                           for (let i = 5; i >= 0; i--) {
-                            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                            const monthName = date.toLocaleDateString("id-ID", { month: "short" });
-                            const monthLicenses = licenses.filter(l => {
-                              // Gunakan permohonanMasuk sebagai tanggal referensi, fallback ke createdAt jika tidak ada
-                              const licenseDateStr = l.permohonanMasuk || l.createdAt;
-                              if (!licenseDateStr) return false;
-                              
-                              const licenseDate = new Date(licenseDateStr);
-                              return licenseDate.getMonth() === date.getMonth() && 
-                                     licenseDate.getFullYear() === date.getFullYear();
+                            const date = new Date(
+                              now.getFullYear(),
+                              now.getMonth() - i,
+                              1,
+                            );
+                            const monthName = date.toLocaleDateString("id-ID", {
+                              month: "short",
                             });
-                            
+                            const monthLicenses = licenses.filter((l) => {
+                              // Gunakan permohonanMasuk sebagai tanggal referensi, fallback ke createdAt jika tidak ada
+                              const licenseDateStr =
+                                l.permohonanMasuk || l.createdAt;
+                              if (!licenseDateStr) return false;
+
+                              const licenseDate = new Date(licenseDateStr);
+                              return (
+                                licenseDate.getMonth() === date.getMonth() &&
+                                licenseDate.getFullYear() === date.getFullYear()
+                              );
+                            });
+
                             monthlyData.push({
                               month: monthName,
-                              count: monthLicenses.length
+                              count: monthLicenses.length,
                             });
                           }
-                          
+
                           return monthlyData.map(({ month, count }, index) => {
-                            const maxCount = Math.max(...monthlyData.map((d: { month: string; count: number }) => d.count));
-                            const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
-                            
+                            const maxCount = Math.max(
+                              ...monthlyData.map(
+                                (d: { month: string; count: number }) =>
+                                  d.count,
+                              ),
+                            );
+                            const percentage =
+                              maxCount > 0 ? (count / maxCount) * 100 : 0;
+
                             return (
                               <div key={month} className="space-y-2">
                                 <div className="flex justify-between text-sm">
                                   <span className="font-medium">{month}</span>
-                                  <span className="text-gray-600">{count} permohonan</span>
+                                  <span className="text-gray-600">
+                                    {count} permohonan
+                                  </span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div 
+                                  <div
                                     className={`h-2 rounded-full ${
-                                      index === monthlyData.length - 1 ? 'bg-emerald-600' :
-                                      index === monthlyData.length - 2 ? 'bg-blue-600' :
-                                      index === monthlyData.length - 3 ? 'bg-purple-600' :
-                                      'bg-gray-400'
+                                      index === monthlyData.length - 1
+                                        ? "bg-emerald-600"
+                                        : index === monthlyData.length - 2
+                                          ? "bg-blue-600"
+                                          : index === monthlyData.length - 3
+                                            ? "bg-purple-600"
+                                            : "bg-gray-400"
                                     }`}
                                     style={{ width: `${percentage}%` }}
                                   ></div>
@@ -1935,35 +2628,63 @@ export default function ReportDashboard() {
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg">Performa SLA per Periode</CardTitle>
+                      <CardTitle className="text-lg">
+                        Performa SLA per Periode
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
                         {(() => {
                           const slaRanges = [
-                            { range: "≤ 7 hari", min: 0, max: 7, color: "bg-green-600" },
-                            { range: "8-10 hari", min: 8, max: 10, color: "bg-blue-600" },
-                            { range: "11-14 hari", min: 11, max: 14, color: "bg-yellow-600" },
-                            { range: "> 14 hari", min: 15, max: 999, color: "bg-red-600" }
+                            {
+                              range: "≤ 7 hari",
+                              min: 0,
+                              max: 7,
+                              color: "bg-green-600",
+                            },
+                            {
+                              range: "8-10 hari",
+                              min: 8,
+                              max: 10,
+                              color: "bg-blue-600",
+                            },
+                            {
+                              range: "11-14 hari",
+                              min: 11,
+                              max: 14,
+                              color: "bg-yellow-600",
+                            },
+                            {
+                              range: "> 14 hari",
+                              min: 15,
+                              max: 999,
+                              color: "bg-red-600",
+                            },
                           ];
-                          
+
                           return slaRanges.map(({ range, min, max, color }) => {
-                            const count = filteredLicenses.filter(l => {
+                            const count = filteredLicenses.filter((l) => {
                               const sla = l.totalSLA || 0;
                               return sla >= min && sla <= max;
                             }).length;
-                            
-                            const percentage = filteredLicenses.length > 0 ? 
-                              Math.round((count / filteredLicenses.length) * 100) : 0;
-                            
+
+                            const percentage =
+                              filteredLicenses.length > 0
+                                ? Math.round(
+                                    (count / filteredLicenses.length) * 100,
+                                  )
+                                : 0;
+
                             return (
                               <div key={range} className="space-y-2">
                                 <div className="flex justify-between text-sm">
                                   <span className="font-medium">{range}</span>
-                                  <span className="text-gray-600">{count} ({percentage}%)</span>
+                                  <span className="text-gray-600">
+                                    {count} ({percentage}%)
+                                  </span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div 
+                                  <div
                                     className={`h-2 rounded-full ${color}`}
                                     style={{ width: `${percentage}%` }}
                                   ></div>
@@ -1989,7 +2710,9 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-blue-700">Total Permohonan</p>
+                    <p className="text-sm font-medium text-blue-700">
+                      Total Permohonan
+                    </p>
                     <p className="text-2xl font-bold text-blue-900">
                       {filteredLicenses.length}
                     </p>
@@ -2004,11 +2727,18 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-emerald-700">Selesai</p>
-                    <p className="text-2xl font-bold text-emerald-900">
-                      {filteredLicenses.filter(l => l.status === "selesai").length}
+                    <p className="text-sm font-medium text-emerald-700">
+                      Selesai
                     </p>
-                    <p className="text-xs text-emerald-600">perizinan selesai</p>
+                    <p className="text-2xl font-bold text-emerald-900">
+                      {
+                        filteredLicenses.filter((l) => l.status === "selesai")
+                          .length
+                      }
+                    </p>
+                    <p className="text-xs text-emerald-600">
+                      perizinan selesai
+                    </p>
                   </div>
                   <CheckCircle className="h-8 w-8 text-emerald-600" />
                 </div>
@@ -2019,9 +2749,16 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-yellow-700">Dalam Proses</p>
+                    <p className="text-sm font-medium text-yellow-700">
+                      Dalam Proses
+                    </p>
                     <p className="text-2xl font-bold text-yellow-900">
-                      {filteredLicenses.filter(l => l.status === "proses" || l.status === "rekomendasi").length}
+                      {
+                        filteredLicenses.filter(
+                          (l) =>
+                            l.status === "proses" || l.status === "rekomendasi",
+                        ).length
+                      }
                     </p>
                     <p className="text-xs text-yellow-600">sedang diproses</p>
                   </div>
@@ -2034,9 +2771,11 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-red-700">Terlambat</p>
+                    <p className="text-sm font-medium text-red-700">
+                      Terlambat
+                    </p>
                     <p className="text-2xl font-bold text-red-900">
-                      {filteredLicenses.filter(l => l.totalSLA > 14).length}
+                      {filteredLicenses.filter((l) => l.totalSLA > 14).length}
                     </p>
                     <p className="text-xs text-red-600">perizinan terlambat</p>
                   </div>
@@ -2076,29 +2815,66 @@ export default function ReportDashboard() {
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="border-b bg-gray-50">
-                      <th className="text-left py-3 px-2 font-semibold border">NO</th>
-                      <th className="text-left py-3 px-2 font-semibold border">JENIS IZIN</th>
-                      <th className="text-left py-3 px-2 font-semibold border">NAMA IZIN</th>
-                      <th className="text-left py-3 px-2 font-semibold border">ALAMAT</th>
-                      <th className="text-left py-3 px-2 font-semibold border">SEKTOR</th>
-                      <th className="text-left py-3 px-2 font-semibold border">TANGGAL PEMOHON MASUK</th>
-                      <th className="text-left py-3 px-2 font-semibold border">TANGGAL PERMINTAAN REKOMENDASI I</th>
-                      <th className="text-left py-3 px-2 font-semibold border">TANGGAL PERMINTAAN REKOMENDASI DI SERAHKAN</th>
-                      <th className="text-left py-3 px-2 font-semibold border">TANGGAL REKOMENDASI I</th>
-                      <th className="text-left py-3 px-2 font-semibold border">TANGGAL REKOMENDASI IZIN DITERIMA</th>
-                      <th className="text-left py-3 px-2 font-semibold border">TANGGAL TERBIT IZIN</th>
-                      <th className="text-left py-3 px-2 font-semibold border">TANGGAL PENYERAHAN IZIN</th>
-                      <th className="text-left py-3 px-2 font-semibold border">REKOMENDASI (HARI)</th>
-                      <th className="text-left py-3 px-2 font-semibold border">PERIZINAN (HARI)</th>
-                      <th className="text-left py-3 px-2 font-semibold border">TOTAL SLA</th>
-                      <th className="text-left py-3 px-2 font-semibold border">STATUS</th>
-                      <th className="text-left py-3 px-2 font-semibold border">KETERANGAN</th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        NO
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        JENIS IZIN
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        NAMA IZIN
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        ALAMAT
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        SEKTOR
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        TANGGAL PEMOHON MASUK
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        TANGGAL PERMINTAAN REKOMENDASI I
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        TANGGAL PERMINTAAN REKOMENDASI DI SERAHKAN
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        TANGGAL REKOMENDASI I
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        TANGGAL REKOMENDASI IZIN DITERIMA
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        TANGGAL TERBIT IZIN
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        TANGGAL PENYERAHAN IZIN
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        REKOMENDASI (HARI)
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        PERIZINAN (HARI)
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        TOTAL SLA
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        STATUS
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        KETERANGAN
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredLicenses.length === 0 ? (
                       <tr>
-                        <td colSpan={17} className="text-center py-8 text-gray-500 border">
+                        <td
+                          colSpan={17}
+                          className="text-center py-8 text-gray-500 border"
+                        >
                           <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                           <p>Tidak ada data permohonan perizinan</p>
                         </td>
@@ -2112,16 +2888,16 @@ export default function ReportDashboard() {
                             namaIzin: license.namaIzin,
                             verificationStatus: license.verificationStatus,
                             verificationNotes: license.verificationNotes,
-                            status: license.status
+                            status: license.status,
                           });
                         }
-                        
+
                         const getStatusText = (status: string) => {
                           // Prioritas: Jika verificationStatus ditolak, tampilkan "ditolak"
                           if (license.verificationStatus === "rejected") {
                             return "ditolak";
                           }
-                          
+
                           switch (status) {
                             case "selesai":
                               return "selesai";
@@ -2140,23 +2916,36 @@ export default function ReportDashboard() {
                           }
                         };
 
-                        const formatDate = (dateString: string | null | undefined) => {
+                        const formatDate = (
+                          dateString: string | null | undefined,
+                        ) => {
                           if (!dateString) return "-";
                           try {
-                            return new Date(dateString).toLocaleDateString("id-ID");
+                            return new Date(dateString).toLocaleDateString(
+                              "id-ID",
+                            );
                           } catch {
                             return "-";
                           }
                         };
-                        
+
                         return (
-                          <tr key={license.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-2 font-medium border">{index + 1}</td>
-                            <td className="py-3 px-2 border">
-                              <span className="text-sm text-gray-700">{license.jenisIzin || "-"}</span>
+                          <tr
+                            key={license.id}
+                            className="border-b hover:bg-gray-50"
+                          >
+                            <td className="py-3 px-2 font-medium border">
+                              {index + 1}
                             </td>
                             <td className="py-3 px-2 border">
-                              <div className="font-medium text-gray-900">{license.namaIzin || "-"}</div>
+                              <span className="text-sm text-gray-700">
+                                {license.jenisIzin || "-"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 border">
+                              <div className="font-medium text-gray-900">
+                                {license.namaIzin || "-"}
+                              </div>
                             </td>
                             <td className="py-3 px-2 border">
                               <span className="text-sm text-gray-700">
@@ -2164,7 +2953,9 @@ export default function ReportDashboard() {
                               </span>
                             </td>
                             <td className="py-3 px-2 border">
-                              <span className="text-sm text-gray-700">{license.sektor || "-"}</span>
+                              <span className="text-sm text-gray-700">
+                                {license.sektor || "-"}
+                              </span>
                             </td>
                             <td className="py-3 px-2 border">
                               <span className="text-sm text-gray-700">
@@ -2178,7 +2969,9 @@ export default function ReportDashboard() {
                             </td>
                             <td className="py-3 px-2 border">
                               <span className="text-sm text-gray-700">
-                                {formatDate(license.tglPermintaanRekomendasiDiserahkan)}
+                                {formatDate(
+                                  license.tglPermintaanRekomendasiDiserahkan,
+                                )}
                               </span>
                             </td>
                             <td className="py-3 px-2 border">
@@ -2212,21 +3005,26 @@ export default function ReportDashboard() {
                               </span>
                             </td>
                             <td className="py-3 px-2 border">
-                              <span className={`text-sm font-medium ${license.totalSLA > 14 ? "text-red-600" : "text-gray-700"}`}>
+                              <span
+                                className={`text-sm font-medium ${license.totalSLA > 14 ? "text-red-600" : "text-gray-700"}`}
+                              >
                                 {license.totalSLA || 0}
                               </span>
                             </td>
                             <td className="py-3 px-2 border">
-                              <span className={`text-sm font-medium ${
-                                license.verificationStatus === "rejected" 
-                                  ? "text-red-700" 
-                                  : "text-gray-700"
-                              }`}>
+                              <span
+                                className={`text-sm font-medium ${
+                                  license.verificationStatus === "rejected"
+                                    ? "text-red-700"
+                                    : "text-gray-700"
+                                }`}
+                              >
                                 {getStatusText(license.status)}
                               </span>
                             </td>
                             <td className="py-3 px-2 border">
-                              {license.verificationStatus === "rejected" && license.verificationNotes ? (
+                              {license.verificationStatus === "rejected" &&
+                              license.verificationNotes ? (
                                 <span className="text-sm text-red-700 font-medium">
                                   {license.verificationNotes}
                                 </span>
@@ -2242,7 +3040,7 @@ export default function ReportDashboard() {
                     )}
                   </tbody>
                 </table>
-                        </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -2255,9 +3053,15 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-red-700">Izin Expired</p>
-                    <p className="text-2xl font-bold text-red-900">{expiredCount}</p>
-                    <p className="text-xs text-red-600">izin telah habis masa berlaku</p>
+                    <p className="text-sm font-medium text-red-700">
+                      Izin Expired
+                    </p>
+                    <p className="text-2xl font-bold text-red-900">
+                      {expiredCount}
+                    </p>
+                    <p className="text-xs text-red-600">
+                      izin telah habis masa berlaku
+                    </p>
                   </div>
                   <XCircle className="h-8 w-8 text-red-600" />
                 </div>
@@ -2267,9 +3071,15 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-amber-700">Akan Expired</p>
-                    <p className="text-2xl font-bold text-amber-900">{expiringSoonCount}</p>
-                    <p className="text-xs text-amber-600">akan habis dalam 30 hari</p>
+                    <p className="text-sm font-medium text-amber-700">
+                      Akan Expired
+                    </p>
+                    <p className="text-2xl font-bold text-amber-900">
+                      {expiringSoonCount}
+                    </p>
+                    <p className="text-xs text-amber-600">
+                      akan habis dalam 30 hari
+                    </p>
                   </div>
                   <AlertTriangle className="h-8 w-8 text-amber-600" />
                 </div>
@@ -2279,9 +3089,15 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-green-700">Masih Berlaku</p>
-                    <p className="text-2xl font-bold text-green-900">{validCount}</p>
-                    <p className="text-xs text-green-600">izin masih berlaku aktif</p>
+                    <p className="text-sm font-medium text-green-700">
+                      Masih Berlaku
+                    </p>
+                    <p className="text-2xl font-bold text-green-900">
+                      {validCount}
+                    </p>
+                    <p className="text-xs text-green-600">
+                      izin masih berlaku aktif
+                    </p>
                   </div>
                   <CheckCircle className="h-8 w-8 text-green-600" />
                 </div>
@@ -2299,7 +3115,8 @@ export default function ReportDashboard() {
                     Daftar Izin Expired / Mendekati Expired
                   </CardTitle>
                   <p className="text-sm text-gray-600 mt-1">
-                    Izin yang telah habis masa berlaku atau akan habis dalam 30 hari ke depan
+                    Izin yang telah habis masa berlaku atau akan habis dalam 30
+                    hari ke depan
                   </p>
                 </div>
                 <Button
@@ -2319,42 +3136,75 @@ export default function ReportDashboard() {
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="border-b bg-gray-50">
-                      <th className="text-left py-3 px-2 font-semibold border">NO</th>
-                      <th className="text-left py-3 px-2 font-semibold border">NAMA IZIN</th>
-                      <th className="text-left py-3 px-2 font-semibold border">PEMOHON</th>
-                      <th className="text-left py-3 px-2 font-semibold border">BERLAKU SAMPAI</th>
-                      <th className="text-left py-3 px-2 font-semibold border">STATUS</th>
-                      <th className="text-left py-3 px-2 font-semibold border">SISA HARI</th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        NO
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        NAMA IZIN
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        PEMOHON
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        BERLAKU SAMPAI
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        STATUS
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        SISA HARI
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {expiredLicenseData.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-gray-500 border">
+                        <td
+                          colSpan={6}
+                          className="text-center py-8 text-gray-500 border"
+                        >
                           <CheckCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                          <p>Tidak ada izin yang expired atau mendekati expired</p>
+                          <p>
+                            Tidak ada izin yang expired atau mendekati expired
+                          </p>
                         </td>
                       </tr>
                     ) : (
                       expiredLicenseData.map((item, index) => (
                         <tr key={item.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-2 font-medium border">{index + 1}</td>
-                          <td className="py-3 px-2 border">{item.namaIzin || "-"}</td>
-                          <td className="py-3 px-2 border">{item.pemohonNama || "-"}</td>
-                          <td className="py-3 px-2 border">{formatDate(item.berlakuSampai)}</td>
+                          <td className="py-3 px-2 font-medium border">
+                            {index + 1}
+                          </td>
                           <td className="py-3 px-2 border">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              (item as any).isExpired
-                                ? "bg-red-100 text-red-800"
-                                : "bg-amber-100 text-amber-800"
-                            }`}>
-                              {(item as any).isExpired ? "Expired" : "Akan Expired"}
+                            {item.namaIzin || "-"}
+                          </td>
+                          <td className="py-3 px-2 border">
+                            {item.pemohonNama || "-"}
+                          </td>
+                          <td className="py-3 px-2 border">
+                            {formatDate(item.berlakuSampai)}
+                          </td>
+                          <td className="py-3 px-2 border">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                (item as any).isExpired
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {(item as any).isExpired
+                                ? "Expired"
+                                : "Akan Expired"}
                             </span>
                           </td>
                           <td className="py-3 px-2 border">
-                            <span className={`font-medium ${
-                              (item as any).isExpired ? "text-red-600" : "text-amber-600"
-                            }`}>
+                            <span
+                              className={`font-medium ${
+                                (item as any).isExpired
+                                  ? "text-red-600"
+                                  : "text-amber-600"
+                              }`}
+                            >
                               {(item as any).isExpired
                                 ? `${Math.abs((item as any).diffDays)} hari lalu`
                                 : `${(item as any).diffDays} hari lagi`}
@@ -2392,7 +3242,9 @@ export default function ReportDashboard() {
                   className="flex items-center gap-2"
                 >
                   <Download className="h-4 w-4" />
-                  {isExportingDaftarPemohonPDF ? "Mengunduh..." : "Download PDF"}
+                  {isExportingDaftarPemohonPDF
+                    ? "Mengunduh..."
+                    : "Download PDF"}
                 </Button>
               </div>
             </CardHeader>
@@ -2401,46 +3253,83 @@ export default function ReportDashboard() {
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="border-b bg-gray-50">
-                      <th className="text-left py-3 px-2 font-semibold border">NO</th>
-                      <th className="text-left py-3 px-2 font-semibold border">NAMA PEMOHON</th>
-                      <th className="text-left py-3 px-2 font-semibold border">KONTAK</th>
-                      <th className="text-left py-3 px-2 font-semibold border">ALAMAT</th>
-                      <th className="text-left py-3 px-2 font-semibold border">NAMA IZIN</th>
-                      <th className="text-left py-3 px-2 font-semibold border">JENIS IZIN</th>
-                      <th className="text-left py-3 px-2 font-semibold border">STATUS</th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        NO
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        NAMA PEMOHON
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        KONTAK
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        ALAMAT
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        NAMA IZIN
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        JENIS IZIN
+                      </th>
+                      <th className="text-left py-3 px-2 font-semibold border">
+                        STATUS
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredLicenses.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-gray-500 border">
+                        <td
+                          colSpan={7}
+                          className="text-center py-8 text-gray-500 border"
+                        >
                           <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                           <p>Tidak ada data pemohon</p>
                         </td>
                       </tr>
                     ) : (
                       filteredLicenses.map((license, index) => (
-                        <tr key={license.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-2 font-medium border">{index + 1}</td>
-                          <td className="py-3 px-2 border">{license.pemohonNama || "-"}</td>
+                        <tr
+                          key={license.id}
+                          className="border-b hover:bg-gray-50"
+                        >
+                          <td className="py-3 px-2 font-medium border">
+                            {index + 1}
+                          </td>
+                          <td className="py-3 px-2 border">
+                            {license.pemohonNama || "-"}
+                          </td>
                           <td className="py-3 px-2 border">
                             <div>{license.pemohonTelepon || "-"}</div>
-                            <div className="text-xs text-gray-500">{license.pemohonEmail || ""}</div>
+                            <div className="text-xs text-gray-500">
+                              {license.pemohonEmail || ""}
+                            </div>
                           </td>
-                          <td className="py-3 px-2 border">{license.alamat || license.lokasiIzin || "-"}</td>
-                          <td className="py-3 px-2 border font-medium">{license.namaIzin || "-"}</td>
-                          <td className="py-3 px-2 border">{license.jenisIzin || "-"}</td>
                           <td className="py-3 px-2 border">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              license.verificationStatus === "rejected"
-                                ? "bg-red-100 text-red-800"
-                                : license.status === "selesai"
-                                ? "bg-green-100 text-green-800"
-                                : license.status === "proses" || license.status === "rekomendasi"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-gray-100 text-gray-800"
-                            }`}>
-                              {license.verificationStatus === "rejected" ? "Ditolak" : license.status.toUpperCase()}
+                            {license.alamat || license.lokasiIzin || "-"}
+                          </td>
+                          <td className="py-3 px-2 border font-medium">
+                            {license.namaIzin || "-"}
+                          </td>
+                          <td className="py-3 px-2 border">
+                            {license.jenisIzin || "-"}
+                          </td>
+                          <td className="py-3 px-2 border">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                license.verificationStatus === "rejected"
+                                  ? "bg-red-100 text-red-800"
+                                  : license.status === "selesai"
+                                    ? "bg-green-100 text-green-800"
+                                    : license.status === "proses" ||
+                                        license.status === "rekomendasi"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {license.verificationStatus === "rejected"
+                                ? "Ditolak"
+                                : license.status.toUpperCase()}
                             </span>
                           </td>
                         </tr>
@@ -2461,9 +3350,14 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-red-700">Total Pengaduan</p>
+                    <p className="text-sm font-medium text-red-700">
+                      Total Pengaduan
+                    </p>
                     <p className="text-2xl font-bold text-red-900">
-                      {complaints.filter(c => c.kategori === "pengaduan").length}
+                      {
+                        complaints.filter((c) => c.kategori === "pengaduan")
+                          .length
+                      }
                     </p>
                     <p className="text-xs text-red-600">pengaduan masuk</p>
                   </div>
@@ -2475,11 +3369,21 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-amber-700">Menunggu Ditindaklanjuti</p>
-                    <p className="text-2xl font-bold text-amber-900">
-                      {complaints.filter(c => c.kategori === "pengaduan" && (c.status === "baru" || c.status === "dibaca")).length}
+                    <p className="text-sm font-medium text-amber-700">
+                      Menunggu Ditindaklanjuti
                     </p>
-                    <p className="text-xs text-amber-600">belum ditindaklanjuti</p>
+                    <p className="text-2xl font-bold text-amber-900">
+                      {
+                        complaints.filter(
+                          (c) =>
+                            c.kategori === "pengaduan" &&
+                            (c.status === "baru" || c.status === "dibaca"),
+                        ).length
+                      }
+                    </p>
+                    <p className="text-xs text-amber-600">
+                      belum ditindaklanjuti
+                    </p>
                   </div>
                   <Clock className="h-8 w-8 text-amber-600" />
                 </div>
@@ -2489,9 +3393,17 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-blue-700">Saran & Pertanyaan</p>
+                    <p className="text-sm font-medium text-blue-700">
+                      Saran & Pertanyaan
+                    </p>
                     <p className="text-2xl font-bold text-blue-900">
-                      {complaints.filter(c => c.kategori === "saran" || c.kategori === "pertanyaan").length}
+                      {
+                        complaints.filter(
+                          (c) =>
+                            c.kategori === "saran" ||
+                            c.kategori === "pertanyaan",
+                        ).length
+                      }
                     </p>
                     <p className="text-xs text-blue-600">saran & pertanyaan</p>
                   </div>
@@ -2503,9 +3415,17 @@ export default function ReportDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-green-700">Selesai Ditangani</p>
+                    <p className="text-sm font-medium text-green-700">
+                      Selesai Ditangani
+                    </p>
                     <p className="text-2xl font-bold text-green-900">
-                      {complaints.filter(c => c.status === "selesai" || c.status === "ditindaklanjuti").length}
+                      {
+                        complaints.filter(
+                          (c) =>
+                            c.status === "selesai" ||
+                            c.status === "ditindaklanjuti",
+                        ).length
+                      }
                     </p>
                     <p className="text-xs text-green-600">sudah ditangani</p>
                   </div>
@@ -2545,54 +3465,102 @@ export default function ReportDashboard() {
                 <table className="w-full border-collapse bg-white">
                   <thead>
                     <tr className="bg-gradient-to-r from-red-50 to-red-100 border-b-2 border-red-300">
-                      <th className="text-center p-3 text-xs font-bold text-red-800 border-r border-red-200 w-12">No</th>
-                      <th className="text-left p-3 text-xs font-bold text-red-800 border-r border-red-200">Nama</th>
-                      <th className="text-left p-3 text-xs font-bold text-red-800 border-r border-red-200">Email</th>
-                      <th className="text-center p-3 text-xs font-bold text-red-800 border-r border-red-200">Kategori</th>
-                      <th className="text-left p-3 text-xs font-bold text-red-800 border-r border-red-200">Pesan</th>
-                      <th className="text-center p-3 text-xs font-bold text-red-800 border-r border-red-200">Status</th>
-                      <th className="text-center p-3 text-xs font-bold text-red-800 border-r border-red-200">Tanggal</th>
-                      <th className="text-left p-3 text-xs font-bold text-red-800">Tanggapan</th>
+                      <th className="text-center p-3 text-xs font-bold text-red-800 border-r border-red-200 w-12">
+                        No
+                      </th>
+                      <th className="text-left p-3 text-xs font-bold text-red-800 border-r border-red-200">
+                        Nama
+                      </th>
+                      <th className="text-left p-3 text-xs font-bold text-red-800 border-r border-red-200">
+                        Email
+                      </th>
+                      <th className="text-center p-3 text-xs font-bold text-red-800 border-r border-red-200">
+                        Kategori
+                      </th>
+                      <th className="text-left p-3 text-xs font-bold text-red-800 border-r border-red-200">
+                        Pesan
+                      </th>
+                      <th className="text-center p-3 text-xs font-bold text-red-800 border-r border-red-200">
+                        Status
+                      </th>
+                      <th className="text-center p-3 text-xs font-bold text-red-800 border-r border-red-200">
+                        Tanggal
+                      </th>
+                      <th className="text-left p-3 text-xs font-bold text-red-800">
+                        Tanggapan
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {complaints.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="text-center py-8 text-gray-500">
+                        <td
+                          colSpan={8}
+                          className="text-center py-8 text-gray-500"
+                        >
                           Tidak ada data pengaduan
                         </td>
                       </tr>
                     ) : (
                       complaints.map((complaint, index) => (
-                        <tr key={complaint.id} className="hover:bg-red-50 transition-colors border-b border-slate-200">
-                          <td className="p-3 text-center text-sm text-slate-700 border-r border-slate-200 font-medium">{index + 1}</td>
-                          <td className="p-3 text-sm text-slate-800 border-r border-slate-200 font-medium">{complaint.nama}</td>
-                          <td className="p-3 text-sm text-slate-600 border-r border-slate-200">{complaint.email}</td>
+                        <tr
+                          key={complaint.id}
+                          className="hover:bg-red-50 transition-colors border-b border-slate-200"
+                        >
+                          <td className="p-3 text-center text-sm text-slate-700 border-r border-slate-200 font-medium">
+                            {index + 1}
+                          </td>
+                          <td className="p-3 text-sm text-slate-800 border-r border-slate-200 font-medium">
+                            {complaint.nama}
+                          </td>
+                          <td className="p-3 text-sm text-slate-600 border-r border-slate-200">
+                            {complaint.email}
+                          </td>
                           <td className="p-3 text-center border-r border-slate-200">
-                            <Badge className={`text-xs ${
-                              complaint.kategori === "pengaduan" ? "bg-red-100 text-red-800" :
-                              complaint.kategori === "saran" ? "bg-blue-100 text-blue-800" :
-                              complaint.kategori === "pertanyaan" ? "bg-yellow-100 text-yellow-800" :
-                              "bg-purple-100 text-purple-800"
-                            }`}>
-                              {complaint.kategori.charAt(0).toUpperCase() + complaint.kategori.slice(1)}
+                            <Badge
+                              className={`text-xs ${
+                                complaint.kategori === "pengaduan"
+                                  ? "bg-red-100 text-red-800"
+                                  : complaint.kategori === "saran"
+                                    ? "bg-blue-100 text-blue-800"
+                                    : complaint.kategori === "pertanyaan"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : "bg-purple-100 text-purple-800"
+                              }`}
+                            >
+                              {complaint.kategori.charAt(0).toUpperCase() +
+                                complaint.kategori.slice(1)}
                             </Badge>
                           </td>
-                          <td className="p-3 text-sm text-slate-700 border-r border-slate-200 max-w-xs truncate">{complaint.pesan}</td>
+                          <td className="p-3 text-sm text-slate-700 border-r border-slate-200 max-w-xs truncate">
+                            {complaint.pesan}
+                          </td>
                           <td className="p-3 text-center border-r border-slate-200">
-                            <Badge className={`text-xs ${
-                              complaint.status === "baru" ? "bg-gray-100 text-gray-800" :
-                              complaint.status === "dibaca" ? "bg-blue-100 text-blue-800" :
-                              complaint.status === "ditindaklanjuti" ? "bg-yellow-100 text-yellow-800" :
-                              "bg-green-100 text-green-800"
-                            }`}>
-                              {complaint.status.charAt(0).toUpperCase() + complaint.status.slice(1)}
+                            <Badge
+                              className={`text-xs ${
+                                complaint.status === "baru"
+                                  ? "bg-gray-100 text-gray-800"
+                                  : complaint.status === "dibaca"
+                                    ? "bg-blue-100 text-blue-800"
+                                    : complaint.status === "ditindaklanjuti"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : "bg-green-100 text-green-800"
+                              }`}
+                            >
+                              {complaint.status.charAt(0).toUpperCase() +
+                                complaint.status.slice(1)}
                             </Badge>
                           </td>
                           <td className="p-3 text-sm text-slate-700 border-r border-slate-200 text-center whitespace-nowrap">
-                            {complaint.createdAt ? new Date(complaint.createdAt).toLocaleDateString("id-ID") : "-"}
+                            {complaint.createdAt
+                              ? new Date(
+                                  complaint.createdAt,
+                                ).toLocaleDateString("id-ID")
+                              : "-"}
                           </td>
-                          <td className="p-3 text-sm text-slate-700 max-w-xs truncate">{complaint.tanggapan || "-"}</td>
+                          <td className="p-3 text-sm text-slate-700 max-w-xs truncate">
+                            {complaint.tanggapan || "-"}
+                          </td>
                         </tr>
                       ))
                     )}
